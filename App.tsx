@@ -404,22 +404,22 @@ function App() {
       <main className="max-w-5xl mx-auto px-4 py-8">
         <form className="space-y-8">
             
-            {/* 0. Header Customization (Optional) */}
+            {/* 0. Header Customization */}
             <section className="bg-white rounded-xl shadow-md border-t-4 border-gray-400 overflow-hidden">
                 <div className="bg-gray-50 px-6 py-4 border-b border-gray-200 flex items-center gap-2">
                     <ImageIcon className="text-gray-600" size={24} />
-                    <h2 className="text-lg font-bold text-gray-800 uppercase">Configuração do Cabeçalho (Opcional)</h2>
+                    <h2 className="text-lg font-bold text-gray-800 uppercase">Personalização (Logos)</h2>
                 </div>
                 <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-8">
                     {/* Left Logo */}
                     <div>
                         <label className={labelClass}>Logo Esquerda (Brasão)</label>
-                        <p className="text-xs text-gray-500 mb-2">Imagem à esquerda (ex: Brasão do Estado)</p>
+                        <p className="text-xs text-gray-500 mb-2">Topo Esquerdo</p>
                         
                         {!formData.logoEsquerda ? (
                              <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:bg-gray-50 hover:border-blue-400 transition-colors">
                                 <Upload className="text-gray-400 mb-2" />
-                                <span className="text-sm text-gray-500 font-medium">Clique para enviar imagem</span>
+                                <span className="text-sm text-gray-500 font-medium">Enviar Imagem</span>
                                 <input type="file" accept="image/*" className="hidden" onChange={(e) => handleLogoUpload(e, 'left')} />
                              </label>
                         ) : (
@@ -439,12 +439,12 @@ function App() {
                     {/* Right Logo */}
                     <div>
                         <label className={labelClass}>Logo Direita (Defesa Civil)</label>
-                        <p className="text-xs text-gray-500 mb-2">Imagem à direita (ex: Logo Defesa Civil)</p>
+                        <p className="text-xs text-gray-500 mb-2">Topo Direito</p>
                         
                         {!formData.logoDireita ? (
                              <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:bg-gray-50 hover:border-blue-400 transition-colors">
                                 <Upload className="text-gray-400 mb-2" />
-                                <span className="text-sm text-gray-500 font-medium">Clique para enviar imagem</span>
+                                <span className="text-sm text-gray-500 font-medium">Enviar Imagem</span>
                                 <input type="file" accept="image/*" className="hidden" onChange={(e) => handleLogoUpload(e, 'right')} />
                              </label>
                         ) : (

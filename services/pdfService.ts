@@ -116,6 +116,34 @@ const drawHeader = (doc: jsPDF, pageWidth: number, margin: number, logoLeft?: st
   return 45; // Start content below header
 };
 
+// Function to draw standard vector footer
+const drawFooter = (doc: jsPDF, pageNumber: number, totalPages: number, pageWidth: number, pageHeight: number) => {
+    const footerY = pageHeight - 20; // Start of footer area
+    
+    doc.setDrawColor(150, 150, 150);
+    doc.setLineWidth(0.5);
+    doc.line(10, footerY, pageWidth - 10, footerY);
+    
+    doc.setFontSize(8);
+    doc.setTextColor(80, 80, 80);
+    doc.setFont('helvetica', 'bold');
+    
+    let textY = footerY + 5;
+    doc.text('Coordenadoria Estadual de Defesa Civil - Paraná', pageWidth / 2, textY, { align: 'center' });
+    
+    textY += 4;
+    doc.setFont('helvetica', 'normal');
+    doc.text('Rua Desembargador Motta, 3384 - Mercês - Curitiba - PR | CEP 80.430-200', pageWidth / 2, textY, { align: 'center' });
+    
+    textY += 4;
+    doc.text('www.defesacivil.pr.gov.br', pageWidth / 2, textY, { align: 'center' });
+
+    // Page number
+    doc.setFontSize(8);
+    doc.text(`Página ${pageNumber} de ${totalPages}`, pageWidth - 15, pageHeight - 10, { align: 'right' });
+};
+
+
 export const generateLaudoPDF = async (
   data: LaudoForm, 
   selectedEngineer: Engineer,
@@ -127,13 +155,14 @@ export const generateLaudoPDF = async (
   const pageHeight = doc.internal.pageSize.getHeight();
   const margin = 20;
   const contentWidth = pageWidth - (margin * 2);
-  
+  const bottomMargin = 25; // Space reserved for automatic footer
+
   // Initial Header
   let yPos = drawHeader(doc, pageWidth, margin, data.logoEsquerda, data.logoDireita);
 
   // Helper to handle page breaks
   const checkPageBreak = (heightNeeded: number) => {
-    if (yPos + heightNeeded > pageHeight - margin) {
+    if (yPos + heightNeeded > pageHeight - bottomMargin) {
         doc.addPage();
         yPos = drawHeader(doc, pageWidth, margin, data.logoEsquerda, data.logoDireita);
     }
@@ -302,7 +331,7 @@ export const generateLaudoPDF = async (
       const rows = Math.ceil(dano.photos.length / 2);
       const spaceNeeded = rows * (photoHeight + 5);
 
-      if (yPos + spaceNeeded > pageHeight - margin) {
+      if (yPos + spaceNeeded > pageHeight - bottomMargin) {
            doc.addPage();
            yPos = drawHeader(doc, pageWidth, margin, data.logoEsquerda, data.logoDireita);
       }
@@ -358,6 +387,13 @@ export const generateLaudoPDF = async (
   yPos += 5;
   const creaText = `CREA-${selectedEngineer.state || 'PR'} ${selectedEngineer.crea}`;
   doc.text(creaText, pageWidth / 2, yPos, { align: 'center' });
+
+  // --- Automatic Footer on All Pages ---
+  const totalPages = doc.getNumberOfPages();
+  for (let i = 1; i <= totalPages; i++) {
+      doc.setPage(i);
+      drawFooter(doc, i, totalPages, pageWidth, pageHeight);
+  }
 
   // Output
   if (mode === 'save') {
