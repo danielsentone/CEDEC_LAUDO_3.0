@@ -110,8 +110,8 @@ export const MapPicker: React.FC<MapPickerProps> = ({ centerLat, centerLng, onLo
   return (
     <div id="map-print-container" className="relative w-full h-[400px] rounded-lg overflow-hidden border border-gray-300 z-0">
       
-      {/* Top Right Controls Container */}
-      <div className="absolute top-2 right-2 z-[400] flex flex-col gap-2 items-end">
+      {/* Top Right Controls Container - Added 'map-custom-controls' class for PDF capture exclusion */}
+      <div className="map-custom-controls absolute top-2 right-2 z-[400] flex flex-col gap-2 items-end">
           {/* Layer Controls */}
           <div className="bg-white p-2 rounded shadow flex gap-2">
             <button 

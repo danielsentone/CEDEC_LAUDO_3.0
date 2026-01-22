@@ -206,6 +206,14 @@ export const generateLaudoPDF = async (
     }
   };
 
+  // Helper to format values that might be empty
+  const formatValue = (value: string | undefined | null): string => {
+    if (!value || value.trim() === '') {
+        return 'NÃO INFORMADO';
+    }
+    return value.toUpperCase();
+  };
+
   // --- Title ---
   checkPageBreak(20);
   doc.setFontSize(14);
@@ -219,7 +227,7 @@ export const generateLaudoPDF = async (
   doc.setFont('helvetica', 'bold');
   doc.text('MUNICÍPIO:', margin, yPos);
   doc.setFont('helvetica', 'normal');
-  doc.text(data.municipio.toUpperCase(), margin + 25, yPos);
+  doc.text(formatValue(data.municipio), margin + 25, yPos);
   
   yPos += 7;
   doc.setFont('helvetica', 'bold');
@@ -244,34 +252,43 @@ export const generateLaudoPDF = async (
     doc.setFont('helvetica', 'normal');
     
     // Simple text wrapping for long addresses/descriptions
-    const splitText = doc.splitTextToSize(value || '-', contentWidth - labelWidth - 2);
+    const splitText = doc.splitTextToSize(value, contentWidth - labelWidth - 2);
     doc.text(splitText, margin + labelWidth + 2, yPos);
     yPos += (splitText.length * 6) + 2; 
   };
 
-  addField('ZONA:', data.zona.toUpperCase());
+  addField('ZONA:', formatValue(data.zona));
 
   if (data.zona === ZoneType.URBANO) {
-      addField('INDICAÇÃO FISCAL:', data.indicacaoFiscal);
-      addField('INSCRIÇÃO IMOBILIÁRIA:', data.inscricaoImobiliaria);
-      addField('MATRÍCULA:', data.matricula);
+      addField('INDICAÇÃO FISCAL:', formatValue(data.indicacaoFiscal));
+      addField('INSCRIÇÃO IMOBILIÁRIA:', formatValue(data.inscricaoImobiliaria));
+      addField('MATRÍCULA:', formatValue(data.matricula));
   } else {
-      addField('NIRF / CIB:', data.nirfCib);
-      addField('INCRA:', data.incra);
+      addField('NIRF / CIB:', formatValue(data.nirfCib));
+      addField('INCRA:', formatValue(data.incra));
   }
 
-  addField('PROPRIETÁRIO:', data.proprietario.toUpperCase());
-  addField('REQUERENTE:', data.requerente.toUpperCase());
-  addField('CPF REQUERENTE:', data.cpfRequerente);
+  addField('PROPRIETÁRIO:', formatValue(data.proprietario));
+  addField('REQUERENTE:', formatValue(data.requerente));
+  addField('CPF REQUERENTE:', formatValue(data.cpfRequerente));
   
-  const fullAddress = `${data.endereco}, ${data.bairro}, ${data.cep}`;
-  addField('ENDEREÇO:', fullAddress.toUpperCase());
+  // Construct address only from parts that exist, or fallback to NOT INFORMED
+  let fullAddress = '';
+  if (data.endereco || data.bairro || data.cep) {
+      const parts = [];
+      if (data.endereco) parts.push(data.endereco);
+      if (data.bairro) parts.push(data.bairro);
+      if (data.cep) parts.push(data.cep);
+      fullAddress = parts.join(', ');
+  }
+  
+  addField('ENDEREÇO:', formatValue(fullAddress));
   
   const coords = `${data.lat.toFixed(6)}, ${data.lng.toFixed(6)}`;
   addField('COORDENADAS:', coords);
 
   const tipologiaText = data.tipologia === BuildingTypology.OUTRO ? data.tipologiaOutro : data.tipologia;
-  addField('TIPOLOGIA:', tipologiaText.toUpperCase());
+  addField('TIPOLOGIA:', formatValue(tipologiaText));
 
   yPos += 5;
 

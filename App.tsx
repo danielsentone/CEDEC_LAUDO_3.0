@@ -181,10 +181,10 @@ function App() {
     cep: '',
     lat: -25.4284, // Default Curitiba
     lng: -49.2733,
-    tipologia: '' as BuildingTypology, // Force user selection
+    tipologia: '' as BuildingTypology, 
     tipologiaOutro: '',
     danos: [],
-    classificacao: '' as DamageClassification, // Force user selection
+    classificacao: '' as DamageClassification, 
     logoEsquerda: BRASAO_PR_LOGO,
     logoDireita: DEFESA_CIVIL_PR_LOGO
   });
@@ -365,11 +365,16 @@ function App() {
       // Reset error message while typing
       setCpfErrorMessage('');
 
-      if (val.length === 14) {
-          const isValid = validateCPF(val);
-          setCpfValid(isValid);
-          if (!isValid) setCpfErrorMessage('CPF Inválido');
+      if (val.length > 0) {
+          if (val.length === 14) {
+              const isValid = validateCPF(val);
+              setCpfValid(isValid);
+              if (!isValid) setCpfErrorMessage('CPF Inválido');
+          } else {
+              setCpfValid(null);
+          }
       } else {
+          // Empty is valid now (optional field)
           setCpfValid(null);
       }
   };
@@ -379,6 +384,10 @@ function App() {
     if (val.length > 0 && val.length < 14) {
         setCpfValid(false);
         setCpfErrorMessage('CPF incompleto');
+    } else if (val.length === 0) {
+        // Clear errors if empty
+        setCpfValid(null);
+        setCpfErrorMessage('');
     }
   };
 
@@ -427,9 +436,15 @@ function App() {
   const validateForm = () => {
     if (!selectedEngineer) { alert("Selecione um engenheiro"); return false; }
     if (!formData.municipio) { alert("Selecione um município"); return false; }
-    if (!formData.tipologia) { alert("Selecione a Tipologia da Edificação"); return false; }
+    // Property Data fields are now optional
+    // Tipologia is optional
     if (!formData.classificacao) { alert("Selecione a Classificação dos Danos"); return false; }
-    if (cpfValid === false) { alert(cpfErrorMessage || "CPF do Requerente inválido!"); return false; }
+    
+    // Only validate CPF if it is filled and marked as invalid
+    if (formData.cpfRequerente.length > 0 && cpfValid === false) { 
+        alert(cpfErrorMessage || "CPF do Requerente inválido!"); 
+        return false; 
+    }
     return true;
   };
 
@@ -445,7 +460,7 @@ function App() {
             onclone: (clonedDoc) => {
                 const elementsToHide = [
                     '.leaflet-control-container', // Zoom controls, attribution, etc.
-                    '.map-layer-controls',        // Custom layer switcher buttons
+                    '.map-custom-controls',       // Custom controls (Layers + GPS)
                     '.map-instruction',           // Bottom instruction text
                     '.leaflet-marker-icon',       // Hide existing marker (we use vector pin in PDF)
                     '.leaflet-marker-shadow'
@@ -707,7 +722,7 @@ function App() {
                                 className={inputClass}
                                 value={formData.requerente}
                                 onChange={e => setFormData({...formData, requerente: e.target.value})}
-                                required
+                                // Optional now
                             />
                         </div>
                         <div className="col-span-1">
@@ -721,7 +736,7 @@ function App() {
                                     onBlur={handleCpfBlur}
                                     placeholder="000.000.000-00"
                                     maxLength={14}
-                                    required
+                                    // Optional now
                                 />
                                 <div className="absolute right-3 top-2.5">
                                     {cpfValid === true && <CheckCircle size={20} className="text-green-600" />}
@@ -957,7 +972,7 @@ function App() {
                     <button
                         type="button"
                         onClick={() => setShowCustomization(!showCustomization)}
-                        className="text-gray-500 hover:text-blue-900 hover:bg-gray-100 p-3 rounded-full transition-colors flex items-center gap-2 text-sm font-bold uppercase"
+                        className="opacity-10 hover:opacity-100 text-gray-500 hover:text-blue-900 hover:bg-gray-100 p-3 rounded-full transition-all flex items-center gap-2 text-sm font-bold uppercase"
                         title="Configurar Logos e Cabeçalho"
                     >
                         <Settings size={24} />
