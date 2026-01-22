@@ -138,18 +138,29 @@ const downloadAndProcessImage = async (url: string): Promise<string> => {
 };
 
 function App() {
-  // Load engineers from localStorage or use initial list
+  // Load engineers from localStorage or use initial list with robustness
   const [engineers, setEngineers] = useState<Engineer[]>(() => {
     if (typeof window !== 'undefined') {
-        const saved = localStorage.getItem('dc_pr_engineers');
-        if (saved) return JSON.parse(saved);
+        try {
+            const saved = localStorage.getItem('dc_pr_engineers');
+            if (saved) {
+                return JSON.parse(saved);
+            }
+        } catch (error) {
+            console.error("Erro ao carregar engenheiros do histórico:", error);
+            // Fallback to initial if data is corrupted
+        }
     }
     return INITIAL_ENGINEERS;
   });
 
-  // Persist engineers on change
+  // Persist engineers on change with error handling
   useEffect(() => {
-    localStorage.setItem('dc_pr_engineers', JSON.stringify(engineers));
+    try {
+        localStorage.setItem('dc_pr_engineers', JSON.stringify(engineers));
+    } catch (error) {
+        console.error("Erro ao salvar engenheiros no histórico:", error);
+    }
   }, [engineers]);
 
   const [formData, setFormData] = useState<LaudoForm>({
