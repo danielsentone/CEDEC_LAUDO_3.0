@@ -19,7 +19,12 @@ import { BRASAO_PR_LOGO, DEFESA_CIVIL_PR_LOGO } from './assets/logos';
 import { MapPicker } from './components/MapPicker';
 import { DamageInput } from './components/DamageInput';
 import { generateLaudoPDF } from './services/pdfService';
-import { FileText, Save, MapPin, User, AlertTriangle, Building, Shield, Trash2, Edit, Lock, CheckCircle, XCircle, Trees, Eye, X, Download, Image as ImageIcon, Upload, Link as LinkIcon, Settings } from 'lucide-react';
+import { FileText, Save, MapPin, User, AlertTriangle, Building, Shield, Trash2, Edit, Lock, CheckCircle, XCircle, Trees, Eye, X, Download, Image as ImageIcon, Upload, Link as LinkIcon, Settings, CloudUpload, Check, Loader2 } from 'lucide-react';
+
+// --- CONFIGURAÇÃO DA PLANILHA ---
+// Cole a URL do seu Google Apps Script aqui:
+const GOOGLE_SHEETS_URL = ''; 
+// Exemplo: 'https://script.google.com/macros/s/AKfycbx.../exec'
 
 // Helper for CPF Mask
 const formatCPF = (value: string) => {
@@ -189,6 +194,10 @@ function App() {
     logoDireita: DEFESA_CIVIL_PR_LOGO
   });
 
+  // Sync State
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncStatus, setSyncStatus] = useState<'idle' | 'success' | 'error'>('idle');
+
   // Effect to automatically download and process default logos on mount
   useEffect(() => {
     const processDefaults = async () => {
@@ -287,8 +296,8 @@ function App() {
   const saveEngineer = () => {
     if (!newEngineer.name || !newEngineer.crea) return alert("Preencha nome e CREA");
     
-    // Logic: If editing, keep existing institution. If new, MUST be Voluntário.
-    const institutionToSave = editingEngineer ? editingEngineer.institution : 'Voluntário';
+    // User selected institution
+    const institutionToSave = newEngineer.institution || 'Voluntário';
 
     if (editingEngineer) {
         // Edit existing
@@ -478,6 +487,50 @@ function App() {
     }
   };
 
+  const sendDataToSheet = async () => {
+    if (!GOOGLE_SHEETS_URL) return; // Skip if not configured
+    if (!selectedEngineer) return;
+
+    setIsSyncing(true);
+    setSyncStatus('idle');
+
+    // Summarize damages
+    const damageSummary = formData.danos
+        .map(d => `${d.type}: ${d.description || 'Sem descrição'}`)
+        .join(' | ');
+
+    const payload = {
+        municipio: formData.municipio,
+        engineerName: selectedEngineer.name,
+        engineerCrea: selectedEngineer.crea,
+        zona: formData.zona,
+        requerente: formData.requerente || 'N/I',
+        cpf: formData.cpfRequerente || 'N/I',
+        endereco: formData.endereco || 'N/I',
+        tipologia: formData.tipologia || 'N/I',
+        classificacao: formData.classificacao,
+        nivelDestruicao: damageStats.level,
+        resumoDanos: damageSummary
+    };
+
+    try {
+        await fetch(GOOGLE_SHEETS_URL, {
+            method: 'POST',
+            mode: 'no-cors', // Essential for Google Apps Script Webhooks from browser
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(payload)
+        });
+        setSyncStatus('success');
+    } catch (error) {
+        console.error("Sync Error", error);
+        setSyncStatus('error');
+    } finally {
+        setIsSyncing(false);
+    }
+  };
+
   const handlePreview = async () => {
     if (!validateForm()) return;
     if (selectedEngineer) {
@@ -494,14 +547,19 @@ function App() {
     e?.preventDefault();
     if (!validateForm()) return;
     if (selectedEngineer) {
+        // Trigger Sync
+        if (GOOGLE_SHEETS_URL) {
+            sendDataToSheet();
+        }
+
         const mapImg = await captureMap();
         // Generate PDF
         await generateLaudoPDF({ ...formData, id_laudo: idLaudo }, selectedEngineer, 'save', mapImg || undefined);
         
-        // REFRESH PAGE AS REQUESTED
+        // Wait a bit to show sync status then refresh
         setTimeout(() => {
              window.location.reload();
-        }, 1000);
+        }, 3000); // Increased timeout to see the sync status
     }
   };
 
@@ -979,7 +1037,21 @@ function App() {
                     </button>
 
                     {/* Main Actions */}
-                    <div className="flex flex-col md:flex-row gap-4 w-full md:w-auto">
+                    <div className="flex flex-col md:flex-row gap-4 w-full md:w-auto items-center">
+                        
+                        {/* Sync Status Indicator */}
+                        {GOOGLE_SHEETS_URL && (
+                            <div className="mr-4 flex items-center gap-2 text-sm font-bold">
+                                {isSyncing ? (
+                                    <span className="text-blue-600 flex items-center gap-1"><Loader2 size={16} className="animate-spin" /> Sincronizando...</span>
+                                ) : syncStatus === 'success' ? (
+                                    <span className="text-green-600 flex items-center gap-1"><Check size={16} /> Dados Enviados</span>
+                                ) : syncStatus === 'error' ? (
+                                    <span className="text-red-500 flex items-center gap-1"><XCircle size={16} /> Falha no Envio</span>
+                                ) : null}
+                            </div>
+                        )}
+
                         <button 
                             type="button"
                             onClick={handlePreview}
@@ -1084,14 +1156,14 @@ function App() {
                     {/* Institution Field - Read Only for UI logic */}
                     <div>
                         <label className={labelClass}>Instituição</label>
-                        <input 
-                            className={`${inputClass} bg-gray-100 text-gray-500 cursor-not-allowed`} 
-                            value={newEngineer.institution || 'Voluntário'} 
-                            readOnly
-                        />
-                        <p className="text-[10px] text-gray-400 mt-1">
-                            * Novos cadastros são definidos como Voluntários automaticamente.
-                        </p>
+                        <select 
+                            className={inputClass}
+                            value={newEngineer.institution || 'Voluntário'}
+                            onChange={e => setNewEngineer({...newEngineer, institution: e.target.value})}
+                        >
+                            <option value="CEDEC">CEDEC</option>
+                            <option value="Voluntário">Voluntário</option>
+                        </select>
                     </div>
 
                     <div className="flex gap-3 justify-end pt-6">
