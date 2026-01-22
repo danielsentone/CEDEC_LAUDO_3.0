@@ -55,6 +55,15 @@ export interface DamageEntry {
   photos: string[]; // Base64 strings
 }
 
+export interface IndicacaoFiscalParts {
+  setor: string;
+  quadra: string;
+  lote: string;
+  sublote: string;
+  unidade: string;
+  digito: string;
+}
+
 export interface LaudoForm {
   id_laudo?: string;
   municipio: string;
@@ -70,7 +79,8 @@ export interface LaudoForm {
   zona: ZoneType;
   // Urban specific
   indicacaoFiscal: string;
-  inscricaoImobiliaria: string;
+  indicacaoFiscalParts?: IndicacaoFiscalParts; // Parsed parts for system use
+  inscricaoImobiliaria: string; // Label renamed to Inscrição Municipal in UI
   matricula: string;
   // Rural specific
   nirfCib: string;

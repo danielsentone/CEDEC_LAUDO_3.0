@@ -36,6 +36,35 @@ const formatCPF = (value: string) => {
     .replace(/(-\d{2})\d+?$/, '$1');
 };
 
+// Helper for Indicação Fiscal Mask (Updated Pattern: 00.00.000.0000.0000.0)
+const formatIndicacaoFiscal = (value: string) => {
+  const numbers = value.replace(/\D/g, '');
+  return numbers
+    .replace(/^(\d{2})(\d)/, '$1.$2')
+    .replace(/^(\d{2})\.(\d{2})(\d)/, '$1.$2.$3')
+    .replace(/^(\d{2})\.(\d{2})\.(\d{3})(\d)/, '$1.$2.$3.$4')
+    .replace(/^(\d{2})\.(\d{2})\.(\d{3})\.(\d{4})(\d)/, '$1.$2.$3.$4.$5')
+    .replace(/^(\d{2})\.(\d{2})\.(\d{3})\.(\d{4})\.(\d{4})(\d)/, '$1.$2.$3.$4.$5.$6')
+    .substring(0, 21); // Limit length based on the mask
+};
+
+// Helper to parse Indicação Fiscal into temporary system variables
+const parseIndicacaoFiscal = (value: string) => {
+    const numbers = value.replace(/\D/g, '');
+    // Expecting at least 16 digits for a full parse based on standard 00.00.000.0000.0000.0
+    if (numbers.length >= 16) {
+        return {
+            setor: numbers.substring(0, 2),
+            quadra: numbers.substring(2, 4),
+            lote: numbers.substring(4, 7),
+            sublote: numbers.substring(7, 11),
+            unidade: numbers.substring(11, 15),
+            digito: numbers.substring(15, 16)
+        };
+    }
+    return undefined;
+};
+
 // Helper for CPF Validation
 const validateCPF = (cpf: string) => {
   cpf = cpf.replace(/[^\d]+/g, '');
@@ -259,6 +288,7 @@ function App() {
   // Validation State
   const [cpfValid, setCpfValid] = useState<boolean | null>(null);
   const [cpfErrorMessage, setCpfErrorMessage] = useState<string>('');
+  const [indicacaoFiscalValid, setIndicacaoFiscalValid] = useState<boolean | null>(null);
 
   // Computed Values
   const selectedEngineer = engineers.find(e => e.id === formData.engineerId);
@@ -279,6 +309,8 @@ function App() {
       lat: city ? city.lat : prev.lat,
       lng: city ? city.lng : prev.lng
     }));
+    // Reset fiscal validation when changing cities
+    setIndicacaoFiscalValid(null);
   };
 
   // Logic to handle Engineer Selection
@@ -290,6 +322,50 @@ function App() {
       setEditingEngineer(null);
     } else {
       setFormData(prev => ({ ...prev, engineerId: val }));
+    }
+  };
+
+  // Logic for Indicação Fiscal Change
+  const handleIndicacaoFiscalChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+      const rawValue = e.target.value;
+
+      if (formData.municipio === 'Rio Bonito do Iguaçu') {
+          const formatted = formatIndicacaoFiscal(rawValue);
+          const parsedParts = parseIndicacaoFiscal(formatted);
+          setFormData(prev => ({ 
+              ...prev, 
+              indicacaoFiscal: formatted,
+              indicacaoFiscalParts: parsedParts
+          }));
+      } else {
+          // Free text for other cities
+          setFormData(prev => ({ 
+              ...prev, 
+              indicacaoFiscal: rawValue,
+              indicacaoFiscalParts: undefined // Clear parsed parts
+          }));
+      }
+      
+      // Reset validation while typing
+      setIndicacaoFiscalValid(null);
+  };
+
+  const handleIndicacaoFiscalBlur = () => {
+    if (formData.municipio === 'Rio Bonito do Iguaçu') {
+        const val = formData.indicacaoFiscal;
+        if (val.length > 0) {
+            // Updated Standard full mask is 21 characters: 00.00.000.0000.0000.0
+            if (val.length < 21) {
+                setIndicacaoFiscalValid(false);
+            } else {
+                setIndicacaoFiscalValid(true);
+            }
+        } else {
+            setIndicacaoFiscalValid(null);
+        }
+    } else {
+        // No strict validation for other cities
+        setIndicacaoFiscalValid(null);
     }
   };
 
@@ -449,6 +525,12 @@ function App() {
     // Tipologia is optional
     if (!formData.classificacao) { alert("Selecione a Classificação dos Danos"); return false; }
     
+    // Validate Indicação Fiscal for Urban zone (New Length 21) - ONLY FOR RIO BONITO
+    if (formData.zona === ZoneType.URBANO && formData.municipio === 'Rio Bonito do Iguaçu' && formData.indicacaoFiscal.length > 0 && indicacaoFiscalValid === false) {
+        alert("Indicação Fiscal incompleta");
+        return false;
+    }
+
     // Only validate CPF if it is filled and marked as invalid
     if (formData.cpfRequerente.length > 0 && cpfValid === false) { 
         alert(cpfErrorMessage || "CPF do Requerente inválido!"); 
@@ -720,15 +802,24 @@ function App() {
                             <>
                                 <div>
                                     <label className={labelClass}>Indicação Fiscal</label>
-                                    <input 
-                                        type="text"
-                                        className={inputClass}
-                                        value={formData.indicacaoFiscal}
-                                        onChange={e => setFormData({...formData, indicacaoFiscal: e.target.value})}
-                                    />
+                                    <div className="relative">
+                                        <input 
+                                            type="text"
+                                            className={`${inputClass} ${indicacaoFiscalValid === false ? 'border-red-500 ring-1 ring-red-500' : ''} ${indicacaoFiscalValid === true ? 'border-green-500 ring-1 ring-green-500' : ''}`}
+                                            value={formData.indicacaoFiscal}
+                                            onChange={handleIndicacaoFiscalChange}
+                                            onBlur={handleIndicacaoFiscalBlur}
+                                            placeholder={formData.municipio === 'Rio Bonito do Iguaçu' ? "00.00.000.0000.0000.0" : "Digite a Indicação Fiscal..."}
+                                        />
+                                        <div className="absolute right-3 top-2.5">
+                                            {indicacaoFiscalValid === true && <CheckCircle size={20} className="text-green-600" />}
+                                            {indicacaoFiscalValid === false && <XCircle size={20} className="text-red-600" />}
+                                        </div>
+                                    </div>
+                                    {indicacaoFiscalValid === false && <p className="text-xs text-red-600 font-bold mt-1">Indicação Fiscal incompleta</p>}
                                 </div>
                                 <div>
-                                    <label className={labelClass}>Inscrição Imobiliária</label>
+                                    <label className={labelClass}>Inscrição Municipal</label>
                                     <input 
                                         type="text"
                                         className={inputClass}

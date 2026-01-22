@@ -261,7 +261,7 @@ export const generateLaudoPDF = async (
 
   if (data.zona === ZoneType.URBANO) {
       addField('INDICAÇÃO FISCAL:', formatValue(data.indicacaoFiscal));
-      addField('INSCRIÇÃO IMOBILIÁRIA:', formatValue(data.inscricaoImobiliaria));
+      addField('INSCRIÇÃO MUNICIPAL:', formatValue(data.inscricaoImobiliaria));
       addField('MATRÍCULA:', formatValue(data.matricula));
   } else {
       addField('NIRF / CIB:', formatValue(data.nirfCib));
