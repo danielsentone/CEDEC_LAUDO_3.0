@@ -99,6 +99,9 @@ export interface LaudoForm {
   tipologiaOutro: string;
   danos: DamageEntry[];
   classificacao: DamageClassification;
+  
+  // New Field
+  parecerFinal: string;
 }
 
 export interface City {

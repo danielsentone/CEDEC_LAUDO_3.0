@@ -12,14 +12,15 @@ import {
   PARANA_CITIES, 
   INITIAL_ENGINEERS, 
   DAMAGE_LOGIC, 
-  BRAZIL_STATES
+  BRAZIL_STATES,
+  PARECER_TEXTS
 } from './constants';
 // Import logos from the assets directory
 import { BRASAO_PR_LOGO, DEFESA_CIVIL_PR_LOGO } from './assets/logos';
 import { MapPicker } from './components/MapPicker';
 import { DamageInput } from './components/DamageInput';
 import { generateLaudoPDF } from './services/pdfService';
-import { FileText, Save, MapPin, User, AlertTriangle, Building, Shield, Trash2, Edit, Lock, CheckCircle, XCircle, Trees, Eye, X, Download, Image as ImageIcon, Upload, Link as LinkIcon, Settings, CloudUpload, Check, Loader2 } from 'lucide-react';
+import { FileText, Save, MapPin, User, AlertTriangle, Building, Shield, Trash2, Edit, Lock, CheckCircle, XCircle, Trees, Eye, X, Download, Image as ImageIcon, Upload, Link as LinkIcon, Settings, CloudUpload, Check, Loader2, ClipboardList } from 'lucide-react';
 
 // --- CONFIGURAÇÃO DA PLANILHA ---
 // Cole a URL do seu Google Apps Script aqui:
@@ -220,7 +221,8 @@ function App() {
     danos: [],
     classificacao: '' as DamageClassification, 
     logoEsquerda: BRASAO_PR_LOGO,
-    logoDireita: DEFESA_CIVIL_PR_LOGO
+    logoDireita: DEFESA_CIVIL_PR_LOGO,
+    parecerFinal: ''
   });
 
   // Sync State
@@ -323,6 +325,18 @@ function App() {
     } else {
       setFormData(prev => ({ ...prev, engineerId: val }));
     }
+  };
+
+  const handleClassificationChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+      const val = e.target.value as DamageClassification;
+      // Get standard text for this classification
+      const defaultParecer = PARECER_TEXTS[val] || '';
+      
+      setFormData(prev => ({
+          ...prev,
+          classificacao: val,
+          parecerFinal: defaultParecer // Update the parecer text
+      }));
   };
 
   // Logic for Indicação Fiscal Change
@@ -991,7 +1005,7 @@ function App() {
                         <select 
                              className={inputClass}
                              value={formData.classificacao}
-                             onChange={e => setFormData({...formData, classificacao: e.target.value as DamageClassification})}
+                             onChange={handleClassificationChange}
                         >
                              <option value="">Selecione...</option>
                              {Object.values(DamageClassification).map(c => (
@@ -1007,6 +1021,30 @@ function App() {
                         <span className="block text-xs font-bold text-orange-600 uppercase">Percentual Estimado</span>
                         <div className="text-xl font-black text-gray-800 mt-1">{damageStats.percent}</div>
                     </div>
+                </div>
+            </section>
+
+             {/* 6. Parecer Técnico Final */}
+             <section className="bg-white rounded-xl shadow-md border-t-4 border-blue-600 overflow-hidden">
+                <div className="bg-gray-50 px-6 py-4 border-b border-gray-200 flex items-center gap-2">
+                    <ClipboardList className="text-orange-600" size={24} />
+                    <h2 className="text-lg font-bold text-blue-900 uppercase">6. Parecer Técnico Final</h2>
+                </div>
+                <div className="p-6">
+                    <div className="bg-blue-50 border border-blue-100 p-4 rounded-lg mb-4">
+                        <p className="text-sm text-blue-800">
+                            <strong>Nota:</strong> O texto abaixo é gerado automaticamente com base na Classificação dos Danos (Lei Estadual nº 22.787/2025). 
+                            Você pode complementar com informações adicionais se necessário.
+                        </p>
+                    </div>
+                    <label className={labelClass}>Texto do Parecer</label>
+                    <textarea 
+                        rows={6}
+                        className={inputClass}
+                        value={formData.parecerFinal}
+                        onChange={e => setFormData({...formData, parecerFinal: e.target.value})}
+                        placeholder="Selecione uma classificação para gerar o parecer padrão..."
+                    />
                 </div>
             </section>
 

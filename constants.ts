@@ -44,3 +44,10 @@ export const DAMAGE_LOGIC = {
     percent: '100%'
   }
 };
+
+export const PARECER_TEXTS = {
+  [DamageClassification.MINIMOS]: "Verifica-se que o imóvel avaliado não apresenta destruição significativa, caracterizada por mínimos, que não demandam reparos emergenciais. Portanto, não classificado segundo Art. 4º, da Lei Estadual nº 22.787/2025.",
+  [DamageClassification.PARCIAIS]: "Verifica-se destruição parcial leve (40%), caracterizada por danos que não comprometem a estrutura, mas demandam reparos em acabamentos, telhado, esquadrias ou instalações. A classificação corresponde ao Art. 4º, inciso III, da Lei Estadual nº 22.787/2025, que define o percentual de 40% para este tipo de dano.",
+  [DamageClassification.SEVEROS]: "Verifica-se destruição parcial grave (70%), caracterizada por danos que comprometam a estrutura ou a habitabilidade, exigindo grandes reparos para seu reestabelecimento. A classificação corresponde ao Art. 4º, inciso II, da Lei Estadual nº 22.787/2025, que define o percentual de 70% para este tipo de dano.",
+  [DamageClassification.RUINA]: "Verifica-se destruição total (100%), caracterizada como integralmente destruída ou com perda estrutural irreversível. A classificação corresponde ao Art. 4º, inciso I, da Lei Estadual nº 22.787/2025, que define o percentual de 100% para este tipo de dano."
+};

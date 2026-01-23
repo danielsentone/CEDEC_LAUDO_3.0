@@ -430,6 +430,32 @@ export const generateLaudoPDF = async (
   addField('NÍVEL DE DESTRUIÇÃO:', actionsData.level.toUpperCase());
   addField('PERCENTUAL CONSIDERADO DE DESTRUIÇÃO:', actionsData.percent);
 
+  yPos += 5;
+
+  // --- Parecer Técnico Final ---
+  if (data.parecerFinal) {
+      checkPageBreak(30);
+      doc.setFontSize(12);
+      doc.setFont('helvetica', 'bold');
+      doc.text('PARECER TÉCNICO FINAL', pageWidth / 2, yPos, { align: 'center' });
+      yPos += 10;
+
+      doc.setFontSize(11);
+      doc.setFont('helvetica', 'normal');
+      
+      const splitParecer = doc.splitTextToSize(data.parecerFinal, contentWidth);
+      
+      // Check if text block fits, if not page break and print rest
+      if (yPos + (splitParecer.length * 6) > pageHeight - bottomMargin) {
+          doc.addPage();
+          yPos = drawHeader(doc, pageWidth, margin, data.logoEsquerda, data.logoDireita);
+      }
+      
+      doc.text(splitParecer, margin, yPos);
+      yPos += (splitParecer.length * 6) + 5;
+  }
+
+
   // --- Signature ---
   checkPageBreak(40);
   yPos += 30;
