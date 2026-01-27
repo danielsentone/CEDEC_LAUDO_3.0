@@ -399,9 +399,10 @@ export const generateLaudoPDF = async (
   
   // Section 5 is approx 35mm
   // Section 6 header is 10mm
-  // Section 6 text is lines * 5
+  // Parecer text: Use 7mm per line for 1.5 spacing calculation to ensure page break happens correctly
   // Extra padding 15mm
-  const infoBlockHeight = 35 + 10 + (splitParecer.length * 5) + 5; 
+  const lineHeight = 7;
+  const infoBlockHeight = 35 + 10 + (splitParecer.length * lineHeight) + 5; 
 
   // If Info block doesn't fit, break page
   if (yPos + infoBlockHeight > pageHeight - bottomMargin) {
@@ -440,8 +441,14 @@ export const generateLaudoPDF = async (
 
   doc.setFontSize(10);
   doc.setFont('helvetica', 'normal');
+  
+  // Apply 1.5 Line Spacing (Approx 1.5 times default)
+  doc.setLineHeightFactor(1.5);
   doc.text(splitParecer, margin, yPos);
-  yPos += (splitParecer.length * 5); // Just text height
+  // Reset line height to default
+  doc.setLineHeightFactor(1.15);
+  
+  yPos += (splitParecer.length * lineHeight); 
 
   // ==========================================
   // ASSINATURA (Com lógica de espaçamento)
