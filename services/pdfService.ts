@@ -3,16 +3,16 @@ import { LaudoForm, Engineer, DamageEntry, BuildingTypology, ZoneType } from '..
 import { DAMAGE_LOGIC } from '../constants';
 
 const drawHeader = (doc: jsPDF, pageWidth: number, margin: number, logoLeft?: string, logoRight?: string): number => {
-  const headerStart = 10;
+  // Ajustado para 15 para dar espaço ao topo do Brasão
+  const headerStart = 15;
   
   // Define distinct box sizes to balance visual weight
-  const logoBoxSizeRight = 25; 
-  const logoBoxSizeLeft = 34; 
+  const logoBoxSizeRight = 24; 
+  const logoBoxSizeLeft = 28; 
 
-  // Define a common baseline Y coordinate for logos to sit on.
-  // This ensures they are aligned by their bottom edge.
-  // We use the approximate height of the largest box + headerStart
-  const logoBaseline = headerStart + 32;
+  // Texto: Linhas em Y = 15, 20, 25, 30.
+  // LogoBaseline em 32 alinha visualmente a base da imagem com a base da última linha de texto.
+  const logoBaseline = headerStart + 17; 
   
   // --- Center Text ---
   // Calculates the visual center between the two logos to ensure equal spacing
@@ -20,7 +20,7 @@ const drawHeader = (doc: jsPDF, pageWidth: number, margin: number, logoLeft?: st
   const contentEndX = pageWidth - margin - logoBoxSizeRight;
   const centerX = (contentStartX + contentEndX) / 2;
 
-  let textY = headerStart + 5;
+  let textY = headerStart;
 
   doc.setTextColor(0, 0, 0);
   doc.setFontSize(11);
@@ -95,7 +95,9 @@ const drawHeader = (doc: jsPDF, pageWidth: number, margin: number, logoLeft?: st
   }
 
   doc.setTextColor(0, 0, 0);
-  return 45; // Start content below header
+  
+  // Retorna Y=50 para garantir que o título do laudo não sobreponha as logos ou texto
+  return 50; 
 };
 
 // Function to draw colored vector footer
@@ -195,7 +197,8 @@ export const generateLaudoPDF = async (
   // ==========================================
 
   // --- Title ---
-  yPos += 5;
+  // Ensure title starts with a safe gap from the header return
+  yPos += 5; 
   doc.setFontSize(14);
   doc.setFont('helvetica', 'bold');
   doc.text('LAUDO DE IMÓVEL AFETADO POR EVENTO CLIMÁTICO', pageWidth / 2, yPos, { align: 'center' });
