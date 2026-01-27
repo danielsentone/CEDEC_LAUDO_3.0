@@ -381,36 +381,61 @@ export const generateLaudoPDF = async (
 
           yPos += rowHeight;
       }
-      yPos += 2; // Extra small spacing after damage block
+      yPos += 10; // Maior espaçamento entre o fim das fotos e o próximo dano
     } else {
-        yPos += 5; // Spacing if no photos
+        yPos += 10; // Maior espaçamento mesmo sem fotos
     }
   });
 
   // ==========================================
-  // BLOCO FINAL: CLASSIFICAÇÃO E PARECER (Agrupados)
+  // BLOCO FINAL: CLASSIFICAÇÃO, PARECER E ASSINATURA
   // ==========================================
   
-  // 1. Calculate height of Information Block (Sections 5 & 6)
   const actionsData = DAMAGE_LOGIC[data.classificacao];
   doc.setFontSize(10);
   const parecerText = data.parecerFinal || "";
   const splitParecer = doc.splitTextToSize(parecerText, contentWidth);
   
-  // Section 5 is approx 35mm
-  // Section 6 header is 10mm
-  // Parecer text: Use 7mm per line for 1.5 spacing calculation to ensure page break happens correctly
-  // Extra padding 15mm
-  const lineHeight = 7;
-  const infoBlockHeight = 35 + 10 + (splitParecer.length * lineHeight) + 5; 
+  // Calcular altura necessária para as seções de texto (Classificação + Parecer)
+  const lineHeight = 7; // Usando 7mm por linha para fator 1.5
+  
+  // Section 5: Header (8) + Padding (2) + Content (5*3 lines) = ~25mm
+  // Section 6: Header (8) + Padding (2) = 10mm
+  const textBlocksHeight = 25 + 10 + (splitParecer.length * lineHeight) + 5; 
 
-  // If Info block doesn't fit, break page
-  if (yPos + infoBlockHeight > pageHeight - bottomMargin) {
+  // Altura da Assinatura e Gaps
+  const signatureHeight = 35; 
+  const preferredSigGap = 35; // Gap ideal
+  const minSigGap = 15;       // Gap mínimo para evitar órfão
+
+  // Verificar espaço restante na página atual
+  const spaceRemaining = pageHeight - bottomMargin - yPos;
+  
+  // Altura total ideal (Parecer + Gap Ideal + Assinatura)
+  const totalHeightIdeal = textBlocksHeight + preferredSigGap + signatureHeight;
+  // Altura total mínima (Parecer + Gap Mínimo + Assinatura)
+  const totalHeightMin = textBlocksHeight + minSigGap + signatureHeight;
+
+  let appliedSigGap = preferredSigGap;
+
+  // Lógica "Anti-Órfão":
+  // 1. Se não cabe nem espremendo a assinatura -> Quebra página ANTES do parecer.
+  //    Isso garante que Parecer e Assinatura vão juntos para a próxima página.
+  if (spaceRemaining < totalHeightMin) {
       doc.addPage();
       yPos = drawHeader(doc, pageWidth, margin, data.logoEsquerda, data.logoDireita);
+      // Na nova página, usamos o gap ideal
+      appliedSigGap = preferredSigGap;
   } else {
+      // Cabe na página atual.
+      // 2. Se cabe com gap ideal, usa ideal.
+      // 3. Se não cabe com ideal, mas cabe com mínimo, calcula o espaço disponível.
+      if (spaceRemaining < totalHeightIdeal) {
+          // Usa o espaço que sobrar, respeitando o mínimo
+          appliedSigGap = Math.max(minSigGap, spaceRemaining - textBlocksHeight - signatureHeight);
+      }
+      
       yPos += 5; // Separator
-      // Draw a line separator if staying on same page
       doc.setDrawColor(200);
       doc.line(margin, yPos, pageWidth - margin, yPos);
       yPos += 10;
@@ -451,23 +476,11 @@ export const generateLaudoPDF = async (
   yPos += (splitParecer.length * lineHeight); 
 
   // ==========================================
-  // ASSINATURA (Com lógica de espaçamento)
+  // ASSINATURA
   // ==========================================
 
-  const signatureHeight = 35; 
-  const signatureGap = 35; // Large gap requested for manual signature
-
-  // Check if we can fit the signature with the LARGE gap on the current page
-  if (yPos + signatureGap + signatureHeight > pageHeight - bottomMargin) {
-      // If it doesn't fit with the large gap, move to new page
-      // On the new page, we treat it as "positioned alone", so standard spacing applies
-      doc.addPage();
-      yPos = drawHeader(doc, pageWidth, margin, data.logoEsquerda, data.logoDireita);
-      yPos += 10; // Standard small top margin
-  } else {
-      // Fits on same page, apply the large gap
-      yPos += signatureGap;
-  }
+  // Aplica o gap calculado anteriormente para garantir integridade do bloco
+  yPos += appliedSigGap;
 
   // --- Identificação do Engenheiro (Signature) ---
   // Electronic Signature indicator
