@@ -199,7 +199,7 @@ function App() {
   }, [engineers]);
 
   const [formData, setFormData] = useState<LaudoForm>({
-    municipio: '',
+    municipio: 'Rio Bonito do Iguaçu',
     data: new Date().toISOString().split('T')[0],
     engineerId: '',
     zona: ZoneType.URBANO,
@@ -214,8 +214,8 @@ function App() {
     endereco: '',
     bairro: '',
     cep: '',
-    lat: -25.4284, // Default Curitiba
-    lng: -49.2733,
+    lat: -25.4897, // Rio Bonito do Iguaçu
+    lng: -52.5283, // Rio Bonito do Iguaçu
     tipologia: '' as BuildingTypology, 
     tipologiaOutro: '',
     danos: [],
@@ -695,11 +695,10 @@ function App() {
                             className={inputClass}
                             value={formData.municipio}
                             onChange={(e) => handleCityChange(e.target.value)}
-                            required
                         >
-                            <option value="">Selecione...</option>
-                            {PARANA_CITIES.map(c => (
-                                <option key={c.name} value={c.name}>{c.name}</option>
+                            <option value="">Selecione o Município...</option>
+                            {PARANA_CITIES.map(city => (
+                                <option key={city.name} value={city.name}>{city.name}</option>
                             ))}
                         </select>
                     </div>

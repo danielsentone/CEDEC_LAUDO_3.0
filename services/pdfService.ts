@@ -227,12 +227,13 @@ export const generateLaudoPDF = async (
 
   yPos += 12;
 
-  // --- 3. Dados do Imóvel ---
+  // --- 2. Dados do Imóvel ---
   doc.setFontSize(11);
   doc.setFont('helvetica', 'bold');
   doc.setFillColor(240, 240, 240);
   doc.rect(margin, yPos - 5, contentWidth, 8, 'F');
-  doc.text('3. DADOS DO IMÓVEL', margin + 2, yPos);
+  // Alterado numeração para 2
+  doc.text('2. DADOS DO IMÓVEL', margin + 2, yPos);
   yPos += 8;
 
   doc.setFontSize(10);
@@ -289,15 +290,30 @@ export const generateLaudoPDF = async (
   yPos += 2;
 
   // --- Map Capture ---
-  // Ensure map fits on page 1, otherwise it will just cut off (but layout is designed to fit)
   if (mapImage) {
       try {
-          const mapHeight = 85;
+          // Lógica de Aspect Ratio para não distorcer o mapa
+          const imgProps = doc.getImageProperties(mapImage);
+          const ratio = imgProps.height / imgProps.width;
+          
+          // Calcula a altura baseada na largura do conteúdo (contentWidth) mantendo a proporção
+          let mapHeight = contentWidth * ratio;
+          
+          // Opcional: Limitar altura se a imagem for excessivamente alta (ex: > 120mm)
+          // Mas priorizar a não distorção
+          if (mapHeight > 140) {
+             // Se for muito alto, redimensiona proporcionalmente para caber na altura máx
+             // mas isso reduziria a largura, criando espaço branco lateral.
+             // Melhor deixar fluir se o usuário tirou um print "comprido".
+             // Se quiser apenas "cropar", teria que manipular a imagem antes.
+             // Assumimos que o print vem do componente de mapa que tem tamanho fixo na tela, mas variable ratio.
+          }
+
           doc.addImage(mapImage, 'PNG', margin, yPos, contentWidth, mapHeight);
           doc.setDrawColor(0);
           doc.rect(margin, yPos, contentWidth, mapHeight);
 
-          // Vector Pin
+          // Vector Pin - Centralizado na nova altura
           const pinX = margin + (contentWidth / 2);
           const pinY = yPos + (mapHeight / 2);
           
@@ -324,17 +340,21 @@ export const generateLaudoPDF = async (
   doc.setFont('helvetica', 'bold');
   doc.setFillColor(240, 240, 240);
   doc.rect(margin, yPos - 5, contentWidth, 8, 'F');
-  doc.text('4. LEVANTAMENTO DE DANOS', margin + 2, yPos);
+  // Alterado numeração para 3
+  doc.text('3. LEVANTAMENTO DE DANOS', margin + 2, yPos);
   yPos += 10;
 
-  data.danos.forEach((dano) => {
+  data.danos.forEach((dano, index) => {
     // Check if title + description fits, otherwise break page
     // Estimating 3 lines for description
     checkPageBreak(30); 
 
     doc.setFontSize(10);
     doc.setFont('helvetica', 'bold');
-    const title = `${dano.type.toUpperCase()}: `;
+    
+    // Numeração 3.X
+    const itemNumber = `3.${index + 1}.`;
+    const title = `${itemNumber} ${dano.type.toUpperCase()}: `;
     doc.text(title, margin, yPos);
     
     const titleWidth = doc.getTextWidth(title);
@@ -399,8 +419,8 @@ export const generateLaudoPDF = async (
   // Calcular altura necessária para as seções de texto (Classificação + Parecer)
   const lineHeight = 7; // Usando 7mm por linha para fator 1.5
   
-  // Section 5: Header (8) + Padding (2) + Content (5*3 lines) = ~25mm
-  // Section 6: Header (8) + Padding (2) = 10mm
+  // Section 4 (Classificacao): Header (8) + Padding (2) + Content (5*3 lines) = ~25mm
+  // Section 5 (Parecer): Header (8) + Padding (2) = 10mm
   const textBlocksHeight = 25 + 10 + (splitParecer.length * lineHeight) + 5; 
 
   // Altura da Assinatura e Gaps
@@ -441,12 +461,12 @@ export const generateLaudoPDF = async (
       yPos += 10;
   }
 
-  // --- 5. Classificação ---
+  // --- 4. Classificação --- (Alterado para 4)
   doc.setFontSize(11);
   doc.setFont('helvetica', 'bold');
   doc.setFillColor(240, 240, 240);
   doc.rect(margin, yPos - 5, contentWidth, 8, 'F');
-  doc.text('5. CLASSIFICAÇÃO FINAL', margin + 2, yPos);
+  doc.text('4. CLASSIFICAÇÃO FINAL', margin + 2, yPos);
   yPos += 10;
 
   doc.setFontSize(10);
@@ -456,12 +476,12 @@ export const generateLaudoPDF = async (
   
   yPos += 8;
 
-  // --- 6. Parecer Técnico ---
+  // --- 5. Parecer Técnico --- (Alterado para 5)
   doc.setFontSize(11);
   doc.setFont('helvetica', 'bold');
   doc.setFillColor(240, 240, 240);
   doc.rect(margin, yPos - 5, contentWidth, 8, 'F');
-  doc.text('6. PARECER TÉCNICO FINAL', margin + 2, yPos);
+  doc.text('5. PARECER TÉCNICO FINAL', margin + 2, yPos);
   yPos += 10;
 
   doc.setFontSize(10);
