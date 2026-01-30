@@ -1,5 +1,5 @@
 import jsPDF from 'jspdf';
-import { LaudoForm, Engineer, DamageEntry, BuildingTypology, ZoneType } from '../types';
+import { LaudoForm, Engineer, BuildingTypology, ZoneType } from '../types';
 import { DAMAGE_LOGIC } from '../constants';
 
 const drawHeader = (doc: jsPDF, pageWidth: number, margin: number, logoLeft?: string, logoRight?: string): number => {
@@ -111,8 +111,6 @@ const cropImage = (base64: string, targetRatio: number): Promise<string> => {
                 newHeight = img.width / targetRatio;
             } 
             // If current is 'wider' than target, we usually keep it or crop width.
-            // To ensure strict fit to the box without empty space, we crop width if needed
-            // But usually wider is fine for maps. However, we want to match dimensions exactly.
             else {
                  newWidth = img.height * targetRatio;
             }
@@ -147,6 +145,10 @@ export const generateLaudoPDF = async (
   const margin = 20;
   const contentWidth = pageWidth - (margin * 2);
   const bottomMargin = 30; 
+  
+  // Standard Constants
+  const FONT_SIZE_BODY = 10;
+  const LINE_HEIGHT = 5; // mm per line approx
 
   let yPos = drawHeader(doc, pageWidth, margin, data.logoEsquerda, data.logoDireita);
 
@@ -164,47 +166,71 @@ export const generateLaudoPDF = async (
     return value.toUpperCase();
   };
 
+  // Helper to print "Label: Value" with consistent formatting
+  // If yPos is provided, it draws there. Otherwise current yPos.
+  // Returns the height used.
+  const printKeyValue = (label: string, value: string, xPos: number, currentY: number, maxWidth: number): number => {
+    doc.setFontSize(FONT_SIZE_BODY);
+    
+    // Draw Label
+    doc.setFont('helvetica', 'bold');
+    doc.text(label, xPos, currentY);
+    const labelWidth = doc.getTextWidth(label);
+    
+    // Draw Value
+    doc.setFont('helvetica', 'normal');
+    const valueX = xPos + labelWidth + 2; // Standard 2mm gap
+    const valueWidth = maxWidth - labelWidth - 2;
+    
+    const splitValue = doc.splitTextToSize(value, valueWidth);
+    doc.text(splitValue, valueX, currentY);
+    
+    return splitValue.length * LINE_HEIGHT;
+  };
+
   yPos += 5; 
   doc.setFontSize(14);
   doc.setFont('helvetica', 'bold');
   doc.text('LAUDO DE IMÓVEL AFETADO POR EVENTO CLIMÁTICO', pageWidth / 2, yPos, { align: 'center' });
   yPos += 15;
 
+  // --- SEÇÃO 1 ---
   doc.setFontSize(11);
   doc.setFont('helvetica', 'bold');
   doc.setFillColor(240, 240, 240);
   doc.rect(margin, yPos - 5, contentWidth, 8, 'F');
-  // Updated Title Section 1
   doc.text('1. LOCALIZAÇÃO, DATA E PROTOCOLO', margin + 2, yPos);
   yPos += 8;
 
-  // Manually ensure standard font sizes and weights for Section 1 fields
-  // to match the automated fields below.
-  doc.setFontSize(10);
-  
+  // Row 1: Municipio (Left) and Data (Right)
+  // Calculate width for Municipio to not overlap Data
+  const dateLabel = 'DATA DA VISTORIA:';
+  const dateValue = new Date(data.data).toLocaleDateString('pt-BR');
+  doc.setFontSize(FONT_SIZE_BODY);
   doc.setFont('helvetica', 'bold');
-  doc.text('MUNICÍPIO:', margin, yPos);
-  
+  const dateLabelWidth = doc.getTextWidth(dateLabel);
   doc.setFont('helvetica', 'normal');
-  doc.text(formatValue(data.municipio), margin + 25, yPos);
+  const dateValueWidth = doc.getTextWidth(dateValue);
+  const totalDateWidth = dateLabelWidth + dateValueWidth + 4; // safety
   
-  const dateLabelX = margin + 100;
-  doc.setFont('helvetica', 'bold');
-  doc.text('DATA DA VISTORIA:', dateLabelX, yPos);
-  
-  doc.setFont('helvetica', 'normal');
-  doc.text(new Date(data.data).toLocaleDateString('pt-BR'), dateLabelX + 40, yPos);
-  
-  yPos += 6; 
-  
-  doc.setFont('helvetica', 'bold');
-  doc.text('PROTOCOLO:', margin, yPos);
-  
-  doc.setFont('helvetica', 'normal');
-  doc.text(formatValue(data.protocolo), margin + 27, yPos);
+  const municipioMaxWidth = contentWidth - totalDateWidth - 5; 
 
-  yPos += 12;
+  printKeyValue('MUNICÍPIO:', formatValue(data.municipio), margin, yPos, municipioMaxWidth);
+  
+  // Draw Data aligned to right side or fixed offset
+  // Let's fix it at a visually pleasing location (e.g. 60% of page) or right aligned
+  const dateStartX = margin + 100;
+  printKeyValue(dateLabel, dateValue, dateStartX, yPos, contentWidth - 100);
+  
+  yPos += LINE_HEIGHT + 2; 
+  
+  // Row 2: Protocolo
+  const usedHeightProto = printKeyValue('PROTOCOLO:', formatValue(data.protocolo), margin, yPos, contentWidth);
+  yPos += usedHeightProto + 2;
 
+  yPos += 4; // Extra spacing before next section
+
+  // --- SEÇÃO 2 ---
   doc.setFontSize(11);
   doc.setFont('helvetica', 'bold');
   doc.setFillColor(240, 240, 240);
@@ -212,33 +238,30 @@ export const generateLaudoPDF = async (
   doc.text('2. DADOS DO IMÓVEL', margin + 2, yPos);
   yPos += 8;
 
-  doc.setFontSize(10);
-  const addField = (label: string, value: string, sameLine = false, xOffset = 0) => {
-    doc.setFont('helvetica', 'bold');
-    const drawX = margin + xOffset;
-    doc.text(label, drawX, yPos);
-    const labelWidth = doc.getTextWidth(label);
-    doc.setFont('helvetica', 'normal');
-    const maxWidth = sameLine ? (contentWidth/2 - labelWidth) : (contentWidth - labelWidth - 2);
-    const splitText = doc.splitTextToSize(value, maxWidth);
-    doc.text(splitText, drawX + labelWidth + 2, yPos);
-    if (!sameLine) yPos += (splitText.length * 5) + 2; 
-    return splitText.length;
+  const addFieldStack = (label: string, value: string, sameLine = false, xOffset = 0) => {
+    // Calculate max width based on whether we share the line
+    const availableWidth = sameLine ? (contentWidth/2) : contentWidth;
+    // We adjust maxWidth passed to printKeyValue to account for the xOffset
+    const height = printKeyValue(label, value, margin + xOffset, yPos, availableWidth - xOffset);
+    if (!sameLine) {
+        yPos += height + 2; // Vertical padding
+    }
+    return height;
   };
 
-  addField('ZONA:', formatValue(data.zona));
+  addFieldStack('ZONA:', formatValue(data.zona));
   if (data.zona === ZoneType.URBANO) {
-      addField('INDICAÇÃO FISCAL:', formatValue(data.indicacaoFiscal));
-      addField('INSCRIÇÃO MUNICIPAL:', formatValue(data.inscricaoImobiliaria));
-      addField('MATRÍCULA:', formatValue(data.matricula));
+      addFieldStack('INDICAÇÃO FISCAL:', formatValue(data.indicacaoFiscal));
+      addFieldStack('INSCRIÇÃO MUNICIPAL:', formatValue(data.inscricaoImobiliaria));
+      addFieldStack('MATRÍCULA:', formatValue(data.matricula));
   } else {
-      addField('NIRF / CIB:', formatValue(data.nirfCib));
-      addField('INCRA:', formatValue(data.incra));
+      addFieldStack('NIRF / CIB:', formatValue(data.nirfCib));
+      addFieldStack('INCRA:', formatValue(data.incra));
   }
-  addField('PROPRIETÁRIO:', formatValue(data.proprietario));
-  addField('REQUERENTE:', formatValue(data.requerente));
+  addFieldStack('PROPRIETÁRIO:', formatValue(data.proprietario));
+  addFieldStack('REQUERENTE:', formatValue(data.requerente));
   
-  addField('CPF DO REQUERENTE:', formatValue(data.cpfRequerente));
+  addFieldStack('CPF DO REQUERENTE:', formatValue(data.cpfRequerente));
   
   let fullAddress = '';
   if (data.endereco || data.bairro || data.cep) {
@@ -248,15 +271,15 @@ export const generateLaudoPDF = async (
       if (data.cep) parts.push(data.cep);
       fullAddress = parts.join(', ');
   }
-  addField('ENDEREÇO:', formatValue(fullAddress));
+  addFieldStack('ENDEREÇO:', formatValue(fullAddress));
   
   if (showPin) {
-    addField('COORDENADAS:', `${data.lat.toFixed(6)}, ${data.lng.toFixed(6)}`);
+    addFieldStack('COORDENADAS:', `${data.lat.toFixed(6)}, ${data.lng.toFixed(6)}`);
   } else {
-    addField('COORDENADAS:', `NÃO ESPECIFICADO`);
+    addFieldStack('COORDENADAS:', `NÃO ESPECIFICADO`);
   }
   
-  addField('TIPOLOGIA:', formatValue(data.tipologia === BuildingTypology.OUTRO ? data.tipologiaOutro : data.tipologia));
+  addFieldStack('TIPOLOGIA:', formatValue(data.tipologia === BuildingTypology.OUTRO ? data.tipologiaOutro : data.tipologia));
 
   yPos += 2; 
 
@@ -266,13 +289,8 @@ export const generateLaudoPDF = async (
           const availableHeight = (pageHeight - bottomMargin) - yPos - 5;
           const targetWidth = 180; // 18cm as requested
           
-          // Default Target Ratio: 16:9 (Landscape)
-          // This ensures standard look on mobile/desktop. 
-          // 180 / (16/9) = ~101.25mm height.
           let targetHeight = targetWidth / (16/9); 
 
-          // If available space is tight (less than 16:9 would take), we compress the target height
-          // This triggers a tighter crop, maintaining the 180mm width.
           if (targetHeight > availableHeight) {
               targetHeight = availableHeight;
           }
@@ -291,8 +309,6 @@ export const generateLaudoPDF = async (
           doc.setLineWidth(1.0); 
           doc.rect(mapX, yPos, targetWidth, targetHeight, 'S');
           doc.setLineWidth(0.2); 
-
-          // NOTE: Vector PIN drawing removed to use the captured image pin.
           
           yPos += targetHeight + 5;
       } catch(e) { console.error("Failed to embed map", e); }
@@ -300,6 +316,8 @@ export const generateLaudoPDF = async (
 
   doc.addPage();
   yPos = drawHeader(doc, pageWidth, margin, data.logoEsquerda, data.logoDireita);
+  
+  // --- SEÇÃO 3 ---
   doc.setFontSize(11);
   doc.setFont('helvetica', 'bold');
   doc.setFillColor(240, 240, 240);
@@ -309,16 +327,15 @@ export const generateLaudoPDF = async (
 
   data.danos.forEach((dano, index) => {
     checkPageBreak(30); 
-    doc.setFontSize(10);
-    doc.setFont('helvetica', 'bold');
-    const title = `3.${index + 1}. ${dano.type.toUpperCase()}: `;
-    doc.text(title, margin, yPos);
-    const titleWidth = doc.getTextWidth(title);
-    doc.setFont('helvetica', 'normal');
+    
+    // Reuse printKeyValue for consistency in title vs description spacing
+    const title = `3.${index + 1}. ${dano.type.toUpperCase()}:`;
     const desc = dano.description || "Sem descrição detalhada.";
-    const splitDesc = doc.splitTextToSize(desc, contentWidth - titleWidth);
-    doc.text(splitDesc, margin + titleWidth, yPos);
-    yPos += (splitDesc.length * 5) + 3;
+    
+    // We want the title to be part of the text flow, but bold.
+    // printKeyValue handles exactly "Label: Value" format
+    const height = printKeyValue(title, desc, margin, yPos, contentWidth);
+    yPos += height + 3;
 
     if (dano.photos.length > 0) {
       const photoWidth = (contentWidth - 6) / 2;
@@ -336,14 +353,18 @@ export const generateLaudoPDF = async (
           yPos += rowHeight;
       }
       yPos += 10;
-    } else { yPos += 10; }
+    } else { yPos += 5; }
   });
 
+  // --- SEÇÃO 4 & 5 ---
   const actionsData = DAMAGE_LOGIC[data.classificacao];
   const parecerText = data.parecerFinal || "";
+  
+  // Calculate text blocks height to check for page break
+  doc.setFontSize(FONT_SIZE_BODY);
+  doc.setFont('helvetica', 'normal');
   const splitParecer = doc.splitTextToSize(parecerText, contentWidth);
-  const lineHeight = 7; 
-  const textBlocksHeight = 25 + 10 + (splitParecer.length * lineHeight) + 5; 
+  const textBlocksHeight = 25 + 10 + (splitParecer.length * LINE_HEIGHT) + 5; 
   const signatureHeight = 35; 
   const preferredSigGap = 35; 
   const minSigGap = 15;       
@@ -360,18 +381,27 @@ export const generateLaudoPDF = async (
       yPos += 5; doc.setDrawColor(200); doc.line(margin, yPos, pageWidth - margin, yPos); yPos += 10;
   }
 
+  // Section 4
   doc.setFontSize(11); doc.setFont('helvetica', 'bold'); doc.setFillColor(240, 240, 240); doc.rect(margin, yPos - 5, contentWidth, 8, 'F');
   doc.text('4. CLASSIFICAÇÃO FINAL', margin + 2, yPos); yPos += 10;
-  doc.setFontSize(10); addField('CLASSIFICAÇÃO:', data.classificacao.toUpperCase()); addField('NÍVEL DE DESTRUIÇÃO:', actionsData.level.toUpperCase()); addField('PERCENTUAL ESTIMADO:', actionsData.percent);
-  yPos += 8;
+  
+  let h = printKeyValue('CLASSIFICAÇÃO:', data.classificacao.toUpperCase(), margin, yPos, contentWidth); yPos += h + 2;
+  h = printKeyValue('NÍVEL DE DESTRUIÇÃO:', actionsData.level.toUpperCase(), margin, yPos, contentWidth); yPos += h + 2;
+  h = printKeyValue('PERCENTUAL ESTIMADO:', actionsData.percent, margin, yPos, contentWidth); yPos += h + 8;
+
+  // Section 5
   doc.setFontSize(11); doc.setFont('helvetica', 'bold'); doc.setFillColor(240, 240, 240); doc.rect(margin, yPos - 5, contentWidth, 8, 'F');
   doc.text('5. PARECER TÉCNICO FINAL', margin + 2, yPos); yPos += 10;
-  doc.setFontSize(10); doc.setFont('helvetica', 'normal');
-  doc.setLineHeightFactor(1.5); doc.text(splitParecer, margin, yPos); doc.setLineHeightFactor(1.15);
-  yPos += (splitParecer.length * lineHeight); 
+  
+  doc.setFontSize(FONT_SIZE_BODY); 
+  doc.setFont('helvetica', 'normal');
+  // Removed custom LineHeightFactor to match standard spacing
+  doc.text(splitParecer, margin, yPos);
+  yPos += (splitParecer.length * LINE_HEIGHT); 
 
   yPos += appliedSigGap;
 
+  // --- SIGNATURE ---
   // Lista de engenheiros que NÃO devem ter a assinatura eletrônica
   const engineersWithoutElectronicSignature = [
     'Alessandra Santana Calegari',
