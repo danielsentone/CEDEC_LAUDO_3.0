@@ -16,14 +16,15 @@ L.Icon.Default.mergeOptions({
 interface MapPickerProps {
   centerLat: number;
   centerLng: number;
+  initialZoom?: number;
   selectedCity?: City;
   onLocationSelect: (lat: number, lng: number, addressData?: any) => void;
+  onZoomChange?: (zoom: number) => void;
   showMarker?: boolean;
 }
 
 // Component to handle map center updates when prop changes
-// Now accepts a ref to check if it should ignore the update (prevent recenter on click)
-const MapController = ({ lat, lng, ignoreRecenter }: { lat: number; lng: number, ignoreRecenter: React.MutableRefObject<boolean> }) => {
+const MapController = ({ lat, lng, zoom, ignoreRecenter }: { lat: number; lng: number, zoom: number, ignoreRecenter: React.MutableRefObject<boolean> }) => {
   const map = useMap();
   
   useEffect(() => {
@@ -32,9 +33,9 @@ const MapController = ({ lat, lng, ignoreRecenter }: { lat: number; lng: number,
         ignoreRecenter.current = false;
         return;
     }
-    // Center the map view
-    map.setView([lat, lng], 15); 
-  }, [lat, lng, map, ignoreRecenter]);
+    // Center the map view with the specific zoom
+    map.setView([lat, lng], zoom); 
+  }, [lat, lng, zoom, map, ignoreRecenter]);
 
   return null;
 };
@@ -51,24 +52,26 @@ const MapInvalidator = () => {
   return null;
 }
 
-// Component to handle clicks - only notifies parent, doesn't manage marker state
-const ClickHandler = ({ onSelect }: { onSelect: (lat: number, lng: number, fromGPS: boolean) => void }) => {
-  useMapEvents({
+// Component to handle clicks and zoom changes
+const MapEventsHandler = ({ onSelect, onZoom }: { onSelect: (lat: number, lng: number) => void, onZoom: (zoom: number) => void }) => {
+  const map = useMapEvents({
     click(e) {
-      onSelect(e.latlng.lat, e.latlng.lng, false);
+      onSelect(e.latlng.lat, e.latlng.lng);
     },
+    zoomend() {
+      onZoom(map.getZoom());
+    }
   });
   return null;
 };
 
-export const MapPicker: React.FC<MapPickerProps> = ({ centerLat, centerLng, onLocationSelect, showMarker = true }) => {
+export const MapPicker: React.FC<MapPickerProps> = ({ centerLat, centerLng, initialZoom = 15, onLocationSelect, onZoomChange, showMarker = true }) => {
   const [layer, setLayer] = useState<'osm' | 'sat' | 'hybrid'>('hybrid'); // Default to Hybrid
   const [isLocating, setIsLocating] = useState(false);
   const ignoreRecenter = useRef(false);
 
   const handleSelect = async (lat: number, lng: number, fromGPS = false) => {
     // Only ignore recenter if it's NOT from GPS (i.e. manual click)
-    // If it is from GPS, we want the map to move.
     if (!fromGPS) {
         ignoreRecenter.current = true;
     } else {
@@ -111,7 +114,7 @@ export const MapPicker: React.FC<MapPickerProps> = ({ centerLat, centerLng, onLo
   return (
     <div id="map-print-container" className="relative w-full h-[400px] rounded-lg overflow-hidden border border-gray-300 z-0">
       
-      {/* Top Right Controls Container - Added 'map-custom-controls' class for PDF capture exclusion */}
+      {/* Top Right Controls Container */}
       <div className="map-custom-controls absolute top-2 right-2 z-[400] flex flex-col gap-2 items-end">
           {/* Layer Controls */}
           <div className="bg-white p-2 rounded shadow flex gap-2">
@@ -151,7 +154,7 @@ export const MapPicker: React.FC<MapPickerProps> = ({ centerLat, centerLng, onLo
           </button>
       </div>
 
-      <MapContainer center={[centerLat, centerLng]} zoom={15} style={{ height: '100%', width: '100%' }}>
+      <MapContainer center={[centerLat, centerLng]} zoom={initialZoom} style={{ height: '100%', width: '100%' }} zoomSnap={0.5} zoomDelta={0.5}>
         {layer === 'osm' && (
              <TileLayer
              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
@@ -174,11 +177,13 @@ export const MapPicker: React.FC<MapPickerProps> = ({ centerLat, centerLng, onLo
           />
         )}
        
-        <MapController lat={centerLat} lng={centerLng} ignoreRecenter={ignoreRecenter} />
+        <MapController lat={centerLat} lng={centerLng} zoom={initialZoom} ignoreRecenter={ignoreRecenter} />
         <MapInvalidator />
-        {/* The Marker is now controlled by props, so it always matches the form data (GPS or Manual) */}
         {showMarker && <Marker position={[centerLat, centerLng]} />}
-        <ClickHandler onSelect={handleSelect} />
+        <MapEventsHandler 
+            onSelect={(lat, lng) => handleSelect(lat, lng)} 
+            onZoom={(zoom) => onZoomChange?.(zoom)} 
+        />
       </MapContainer>
       <div className="map-instruction bg-blue-50 text-blue-800 text-xs p-2 text-center border-t border-blue-100 absolute bottom-0 w-full z-[400]">
         Clique no mapa para definir a localização exata e buscar o endereço automaticamente.

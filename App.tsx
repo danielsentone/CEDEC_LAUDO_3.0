@@ -239,7 +239,8 @@ function App() {
   // Map Visualization State
   const [mapState, setMapState] = useState({
       lat: -25.4897,
-      lng: -52.5283
+      lng: -52.5283,
+      zoom: 15
   });
   
   // Track if the location is specific (user clicked/GPS) or general (default city center)
@@ -319,8 +320,8 @@ function App() {
     ? DAMAGE_LOGIC[formData.classificacao] 
     : { level: '---', percent: '---' };
 
-  // Standard input style class for consistency
-  const inputClass = "w-full rounded-md border-gray-300 shadow-sm focus:border-orange-500 focus:ring-orange-500 py-2 px-3 border bg-white text-black";
+  // Standard input style class for consistency - Added fixed height for alignment
+  const inputClass = "w-full h-[42px] rounded-md border-gray-300 shadow-sm focus:border-orange-500 focus:ring-orange-500 py-2 px-3 border bg-white text-black";
   const labelClass = "block text-sm font-bold text-blue-900 mb-1";
 
   // Logic to center map on city selection
@@ -329,7 +330,7 @@ function App() {
     
     // Update map view if city found
     if (city) {
-        setMapState({ lat: city.lat, lng: city.lng });
+        setMapState(prev => ({ ...prev, lat: city.lat, lng: city.lng, zoom: 15 }));
     }
 
     // Reset specific location flag - user just picked a city, hasn't pinpointed address
@@ -503,7 +504,7 @@ function App() {
     setIsSpecificLocation(true);
     
     // Update BOTH map view/marker AND form fields
-    setMapState({ lat, lng });
+    setMapState(prev => ({ ...prev, lat, lng }));
     setFormData(prev => ({
         ...prev,
         lat,
@@ -619,23 +620,33 @@ function App() {
     const mapElement = document.getElementById('map-print-container');
     if (!mapElement) return null;
     try {
+        // Determine the optimal scale. On mobile, we might want to cap it.
+        const isMobile = window.innerWidth < 768;
+        const captureScale = isMobile ? 2 : 2;
+
         const canvas = await html2canvas(mapElement, {
             useCORS: true,
             allowTaint: false,
             logging: false,
-            scale: 2, // Improved resolution
+            scale: captureScale,
+            backgroundColor: null,
             onclone: (clonedDoc) => {
                 const elementsToHide = [
                     '.leaflet-control-container', // Zoom controls, attribution, etc.
                     '.map-custom-controls',       // Custom controls (Layers + GPS)
                     '.map-instruction',           // Bottom instruction text
-                    // We REMOVED .leaflet-marker-icon and .leaflet-marker-shadow from here
-                    // to ensure the pin is captured in the image.
                 ];
                 elementsToHide.forEach(selector => {
                     const el = clonedDoc.querySelector(selector);
                     if (el) (el as HTMLElement).style.display = 'none';
                 });
+
+                // Ensure the cloned map maintains the visual appearance
+                const clonedMapContainer = clonedDoc.getElementById('map-print-container');
+                if (clonedMapContainer) {
+                    clonedMapContainer.style.width = mapElement.offsetWidth + 'px';
+                    clonedMapContainer.style.height = mapElement.offsetHeight + 'px';
+                }
             }
         });
         return canvas.toDataURL('image/png');
@@ -765,7 +776,7 @@ function App() {
              setProtocoloValid(null);
 
              // 4. Reset Map View and Location Flag
-             setMapState({ lat: defaultLat, lng: defaultLng });
+             setMapState({ lat: defaultLat, lng: defaultLng, zoom: 15 });
              setIsSpecificLocation(false);
 
              // 5. Reset Sync Status visually
@@ -847,8 +858,9 @@ function App() {
                                 {protocoloValid === true && <CheckCircle size={20} className="text-green-600" />}
                                 {protocoloValid === false && <XCircle size={20} className="text-red-600" />}
                             </div>
+                            {/* Validation message moved to absolute to prevent height jump */}
+                            {protocoloValid === false && <p className="absolute left-0 -bottom-5 text-[10px] text-red-600 font-bold leading-tight">Formato inválido ou incompleto</p>}
                         </div>
-                        {protocoloValid === false && <p className="text-xs text-red-600 font-bold mt-1">Formato inválido ou incompleto</p>}
                     </div>
                 </div>
             </section>
@@ -1062,7 +1074,9 @@ function App() {
                         <MapPicker 
                             centerLat={mapState.lat}
                             centerLng={mapState.lng}
+                            initialZoom={mapState.zoom}
                             onLocationSelect={handleLocationSelect}
+                            onZoomChange={(z) => setMapState(prev => ({ ...prev, zoom: z }))}
                             showMarker={isSpecificLocation}
                         />
                     </div>
@@ -1207,6 +1221,7 @@ function App() {
                     <textarea 
                         rows={6}
                         className={inputClass}
+                        style={{ height: 'auto', minHeight: '150px' }}
                         value={formData.parecerFinal}
                         onChange={e => setFormData({...formData, parecerFinal: e.target.value})}
                         placeholder="Selecione uma classificação para gerar o parecer padrão..."
