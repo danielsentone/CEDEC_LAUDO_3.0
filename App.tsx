@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 // @ts-ignore
 import html2canvas from 'html2canvas';
@@ -200,7 +199,6 @@ function App() {
     parecerFinal: ''
   });
 
-  // O zoom padrão de 14 é ideal para cobrir a maior parte da área urbana (centro)
   const [mapState, setMapState] = useState({
       lat: -25.4897,
       lng: -52.5283,
@@ -396,7 +394,8 @@ function App() {
     const mapElement = document.getElementById('map-print-container');
     if (!mapElement) return null;
     try {
-        const captureScale = 2; // Alta resolução
+        // Escala aumentada para manter qualidade no PDF mesmo em viewports pequenos
+        const captureScale = 3; 
         const canvas = await html2canvas(mapElement, {
             useCORS: true,
             allowTaint: false,
@@ -404,28 +403,17 @@ function App() {
             scale: captureScale,
             backgroundColor: null,
             onclone: (clonedDoc) => {
-                // Remove controles para a foto
                 const elementsToHide = ['.leaflet-control-container', '.map-custom-controls', '.map-instruction'];
                 elementsToHide.forEach(selector => {
                     const el = clonedDoc.querySelector(selector);
                     if (el) (el as HTMLElement).style.display = 'none';
                 });
 
-                // TRUQUE PARA CONTEXTO NO MOBILE:
-                // Forçamos o container do mapa a ter uma largura "Desktop" (1200px) no clone.
-                // Isso faz com que o html2canvas capture uma área muito maior, mostrando ruas vizinhas
-                // em vez de apenas o recorte estreito da tela do celular.
                 const clonedMapContainer = clonedDoc.getElementById('map-print-container');
                 if (clonedMapContainer) {
-                    clonedMapContainer.style.width = '1200px';
-                    clonedMapContainer.style.height = '675px'; // 16:9
-                    
-                    // Força o Leaflet interno a preencher o espaço (se possível via estilos)
-                    const mapEl = clonedMapContainer.querySelector('.leaflet-container');
-                    if (mapEl) {
-                        (mapEl as HTMLElement).style.width = '100%';
-                        (mapEl as HTMLElement).style.height = '100%';
-                    }
+                    clonedMapContainer.style.border = 'none';
+                    clonedMapContainer.style.borderRadius = '0';
+                    // Captura exatamente o tamanho visual do dispositivo atual
                 }
             }
         });
@@ -433,7 +421,6 @@ function App() {
     } catch (e) { return null; }
   };
 
-  // Fixed the "Cannot find name 'handlePreview'" error by implementing the function
   const handlePreview = async () => {
     if (!validateForm() || !selectedEngineer) return;
     const mapImg = await captureMap();
@@ -468,7 +455,7 @@ function App() {
              inscricaoImobiliaria: '', matricula: '', nirfCib: '', incra: '',
              proprietario: '', requerente: '', cpfRequerente: '',
              endereco: '', bairro: '', cep: '', lat: defaultLat, lng: defaultLng,
-             tipologia: '' as BuildingTypology, tipologiaOutro: '', // Fixed typo from tipology to tipologia
+             tipologia: '' as BuildingTypology, tipologiaOutro: '',
              danos: [], classificacao: '' as DamageClassification, parecerFinal: ''
          }));
          setCpfValid(null); setCpfErrorMessage(''); setIndicacaoFiscalValid(null); setProtocoloValid(null);
@@ -500,7 +487,6 @@ function App() {
                 <div className="p-6 grid grid-cols-1 md:grid-cols-3 gap-6 items-start">
                     <div className="w-full max-w-sm mx-auto md:max-w-none">
                         <label className={labelClass}>Município</label>
-                        {/* Integrated CityAutocomplete for better UX with search functionality */}
                         <CityAutocomplete 
                           cities={PARANA_CITIES} 
                           selectedCity={formData.municipio} 
