@@ -183,6 +183,9 @@ const downloadAndProcessImage = async (url: string): Promise<string> => {
 };
 
 function App() {
+  // Detection for mobile to adjust default zoom
+  const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
+
   // Load engineers from localStorage or use initial list with robustness
   const [engineers, setEngineers] = useState<Engineer[]>(() => {
     if (typeof window !== 'undefined') {
@@ -236,11 +239,11 @@ function App() {
     parecerFinal: ''
   });
 
-  // Map Visualization State
+  // Map Visualization State - Default zoom is slightly lower on mobile to prevent excessive zoom in PDF
   const [mapState, setMapState] = useState({
       lat: -25.4897,
       lng: -52.5283,
-      zoom: 15
+      zoom: isMobile ? 14 : 15
   });
   
   // Track if the location is specific (user clicked/GPS) or general (default city center)
@@ -321,7 +324,7 @@ function App() {
     : { level: '---', percent: '---' };
 
   // Standard input style class for consistency - Added fixed height for alignment
-  const inputClass = "w-full h-[42px] rounded-md border-gray-300 shadow-sm focus:border-orange-500 focus:ring-orange-500 py-2 px-3 border bg-white text-black";
+  const inputClass = "w-full h-[42px] rounded-md border-gray-300 shadow-sm focus:border-orange-500 focus:ring-orange-500 py-2 px-3 border bg-white text-black transition-all";
   const labelClass = "block text-sm font-bold text-blue-900 mb-1";
 
   // Logic to center map on city selection
@@ -330,7 +333,7 @@ function App() {
     
     // Update map view if city found
     if (city) {
-        setMapState(prev => ({ ...prev, lat: city.lat, lng: city.lng, zoom: 15 }));
+        setMapState(prev => ({ ...prev, lat: city.lat, lng: city.lng, zoom: isMobile ? 14 : 15 }));
     }
 
     // Reset specific location flag - user just picked a city, hasn't pinpointed address
@@ -620,9 +623,8 @@ function App() {
     const mapElement = document.getElementById('map-print-container');
     if (!mapElement) return null;
     try {
-        // Determine the optimal scale. On mobile, we might want to cap it.
-        const isMobile = window.innerWidth < 768;
-        const captureScale = isMobile ? 2 : 2;
+        // Adjusted scale for mobile to improve capture quality without distortion
+        const captureScale = isMobile ? 1.5 : 2;
 
         const canvas = await html2canvas(mapElement, {
             useCORS: true,
@@ -776,7 +778,7 @@ function App() {
              setProtocoloValid(null);
 
              // 4. Reset Map View and Location Flag
-             setMapState({ lat: defaultLat, lng: defaultLng, zoom: 15 });
+             setMapState({ lat: defaultLat, lng: defaultLng, zoom: isMobile ? 14 : 15 });
              setIsSpecificLocation(false);
 
              // 5. Reset Sync Status visually
@@ -819,7 +821,7 @@ function App() {
                     <MapPin className="text-orange-600" size={24} />
                     <h2 className="text-lg font-bold text-blue-900 uppercase">1. Localização, Data e Protocolo</h2>
                 </div>
-                <div className="p-6 grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="p-6 grid grid-cols-1 md:grid-cols-3 gap-6 items-start">
                     <div>
                         <label className={labelClass}>Município</label>
                         <select 
@@ -844,7 +846,7 @@ function App() {
                     </div>
                     <div>
                         <label className={labelClass}>Protocolo</label>
-                        <div className="relative">
+                        <div className="relative h-[42px]">
                             <input 
                                 type="text"
                                 className={`${inputClass} ${protocoloValid === false ? 'border-red-500 ring-1 ring-red-500' : ''} ${protocoloValid === true ? 'border-green-500 ring-1 ring-green-500' : ''}`}
@@ -858,8 +860,7 @@ function App() {
                                 {protocoloValid === true && <CheckCircle size={20} className="text-green-600" />}
                                 {protocoloValid === false && <XCircle size={20} className="text-red-600" />}
                             </div>
-                            {/* Validation message moved to absolute to prevent height jump */}
-                            {protocoloValid === false && <p className="absolute left-0 -bottom-5 text-[10px] text-red-600 font-bold leading-tight">Formato inválido ou incompleto</p>}
+                            {protocoloValid === false && <p className="absolute left-0 -bottom-5 text-[10px] text-red-600 font-bold leading-tight uppercase">Protocolo Inválido</p>}
                         </div>
                     </div>
                 </div>
@@ -965,7 +966,7 @@ function App() {
                             <>
                                 <div>
                                     <label className={labelClass}>Indicação Fiscal</label>
-                                    <div className="relative">
+                                    <div className="relative h-[42px]">
                                         <input 
                                             type="text"
                                             className={`${inputClass} ${indicacaoFiscalValid === false ? 'border-red-500 ring-1 ring-red-500' : ''} ${indicacaoFiscalValid === true ? 'border-green-500 ring-1 ring-green-500' : ''}`}
@@ -979,7 +980,7 @@ function App() {
                                             {indicacaoFiscalValid === false && <XCircle size={20} className="text-red-600" />}
                                         </div>
                                     </div>
-                                    {indicacaoFiscalValid === false && <p className="text-xs text-red-600 font-bold mt-1">Indicação Fiscal incompleta</p>}
+                                    {indicacaoFiscalValid === false && <p className="text-[10px] text-red-600 font-bold mt-1 uppercase">Indicação Fiscal incompleta</p>}
                                 </div>
                                 <div>
                                     <label className={labelClass}>Inscrição Municipal</label>
@@ -1039,7 +1040,7 @@ function App() {
                         </div>
                         <div className="col-span-1">
                             <label className={labelClass}>CPF do Requerente</label>
-                            <div className="relative">
+                            <div className="relative h-[42px]">
                                 <input 
                                     type="text"
                                     className={`${inputClass} ${cpfValid === false ? 'border-red-500 ring-1 ring-red-500' : ''} ${cpfValid === true ? 'border-green-500 ring-1 ring-green-500' : ''}`}
@@ -1055,7 +1056,7 @@ function App() {
                                     {cpfValid === false && <XCircle size={20} className="text-red-600" />}
                                 </div>
                             </div>
-                            {cpfValid === false && <p className="text-xs text-red-600 font-bold mt-1">{cpfErrorMessage || 'CPF Inválido'}</p>}
+                            {cpfValid === false && <p className="text-[10px] text-red-600 font-bold mt-1 uppercase">{cpfErrorMessage || 'CPF Inválido'}</p>}
                         </div>
                          <div className="col-span-1">
                             <label className={labelClass}>Proprietário</label>
@@ -1070,7 +1071,7 @@ function App() {
 
                     {/* Map Integration */}
                     <div className="bg-blue-50 p-4 rounded-lg border border-blue-100">
-                        <label className="block text-sm font-bold text-blue-900 mb-2">Localização Geográfica (Selecione no Mapa)</label>
+                        <label className="block text-sm font-bold text-blue-900 mb-2 uppercase">Localização Geográfica (Selecione no Mapa)</label>
                         <MapPicker 
                             centerLat={mapState.lat}
                             centerLng={mapState.lng}
