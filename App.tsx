@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 // @ts-ignore
 import html2canvas from 'html2canvas';
@@ -19,15 +20,15 @@ import {
 import { BRASAO_PR_LOGO, DEFESA_CIVIL_PR_LOGO } from './assets/logos';
 import { MapPicker } from './components/MapPicker';
 import { DamageInput } from './components/DamageInput';
+import { CityAutocomplete } from './components/CityAutocomplete';
 import { generateLaudoPDF } from './services/pdfService';
 import { FileText, Save, MapPin, User, AlertTriangle, Building, Shield, Trash2, Edit, Lock, CheckCircle, XCircle, Trees, Eye, X, Download, Image as ImageIcon, Upload, Link as LinkIcon, Settings, CloudUpload, Check, Loader2, ClipboardList } from 'lucide-react';
 
 // --- CONFIGURAÇÃO DA PLANILHA ---
 // Cole a URL do seu Google Apps Script aqui:
 const GOOGLE_SHEETS_URL = ''; 
-// Exemplo: 'https://script.google.com/macros/s/AKfycbx.../exec'
 
-// Helper to get Local Date in YYYY-MM-DD format (Fixing UTC offset issues)
+// Helper to get Local Date in YYYY-MM-DD format
 const getLocalDate = () => {
   const now = new Date();
   const year = now.getFullYear();
@@ -53,22 +54,24 @@ const formatProtocolo = (value: string) => {
     .replace(/^(\d{2})(\d)/, '$1.$2')
     .replace(/^(\d{2})\.(\d{3})(\d)/, '$1.$2.$3')
     .replace(/^(\d{2})\.(\d{3})\.(\d{3})(\d)/, '$1.$2.$3-$4')
-    .substring(0, 12); // Limit length: XX.XXX.XXX-X is 12 chars
+    .substring(0, 12);
 };
 
-// Helper for Indicação Fiscal Mask (Updated Pattern: 00.00.000.0000.0000.0)
+/**
+ * Máscara Indicação Fiscal: 00.00.000.0000.0000.0
+ * Posições dos pontos após dígitos: 2, 4, 7, 11, 15
+ */
 const formatIndicacaoFiscal = (value: string) => {
   const numbers = value.replace(/\D/g, '');
   return numbers
     .replace(/^(\d{2})(\d)/, '$1.$2')
     .replace(/^(\d{2})\.(\d{2})(\d)/, '$1.$2.$3')
-    .replace(/^(\d{2})\.(\d{3})(\d)/, '$1.$2.$3.$4')
+    .replace(/^(\d{2})\.(\d{2})\.(\d{3})(\d)/, '$1.$2.$3.$4')
     .replace(/^(\d{2})\.(\d{2})\.(\d{3})\.(\d{4})(\d)/, '$1.$2.$3.$4.$5')
     .replace(/^(\d{2})\.(\d{2})\.(\d{3})\.(\d{4})\.(\d{4})(\d)/, '$1.$2.$3.$4.$5.$6')
-    .substring(0, 21); // Limit length based on the mask
+    .substring(0, 21);
 };
 
-// Helper to parse Indicação Fiscal into temporary system variables
 const parseIndicacaoFiscal = (value: string) => {
     const numbers = value.replace(/\D/g, '');
     if (numbers.length >= 16) {
@@ -84,28 +87,22 @@ const parseIndicacaoFiscal = (value: string) => {
     return undefined;
 };
 
-// Helper for CPF Validation
 const validateCPF = (cpf: string) => {
   cpf = cpf.replace(/[^\d]+/g, '');
   if (cpf.length !== 11 || !!cpf.match(/(\d)\1{10}/)) return false;
-  
-  let sum = 0;
-  let remainder;
+  let sum = 0, remainder;
   for (let i = 1; i <= 9; i++) sum += parseInt(cpf.substring(i - 1, i)) * (11 - i);
   remainder = (sum * 10) % 11;
   if ((remainder === 10) || (remainder === 11)) remainder = 0;
   if (remainder !== parseInt(cpf.substring(9, 10))) return false;
-  
   sum = 0;
   for (let i = 1; i <= 10; i++) sum += parseInt(cpf.substring(i - 1, i)) * (12 - i);
   remainder = (sum * 10) % 11;
   if ((remainder === 10) || (remainder === 11)) remainder = 0;
   if (remainder !== parseInt(cpf.substring(10, 11))) return false;
-  
   return true;
 };
 
-// Helper to process and trim whitespace from images
 const processAndTrimImage = (file: File | Blob): Promise<string> => {
     return new Promise((resolve) => {
       const reader = new FileReader();
@@ -116,48 +113,27 @@ const processAndTrimImage = (file: File | Blob): Promise<string> => {
           const canvas = document.createElement('canvas');
           const ctx = canvas.getContext('2d', { willReadFrequently: true });
           if (!ctx) { resolve(img.src); return; }
-  
-          canvas.width = img.width;
-          canvas.height = img.height;
+          canvas.width = img.width; canvas.height = img.height;
           ctx.drawImage(img, 0, 0);
-  
           const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
           const data = imageData.data;
-          let minX = canvas.width, minY = canvas.height, maxX = 0, maxY = 0;
-          let found = false;
-  
+          let minX = canvas.width, minY = canvas.height, maxX = 0, maxY = 0, found = false;
           for (let y = 0; y < canvas.height; y++) {
             for (let x = 0; x < canvas.width; x++) {
               const i = (y * canvas.width + x) * 4;
-              const r = data[i];
-              const g = data[i + 1];
-              const b = data[i + 2];
-              const a = data[i + 3];
-  
-              const isWhite = r > 240 && g > 240 && b > 240;
-              const isTransparent = a < 10;
-  
-              if (!isTransparent && !isWhite) {
-                if (x < minX) minX = x;
-                if (x > maxX) maxX = x;
-                if (y < minY) minY = y;
-                if (y > maxY) maxY = y;
+              if (data[i+3] > 10 && (data[i] < 240 || data[i+1] < 240 || data[i+2] < 240)) {
+                if (x < minX) minX = x; if (x > maxX) maxX = x;
+                if (y < minY) minY = y; if (y > maxY) maxY = y;
                 found = true;
               }
             }
           }
-  
           if (!found) { resolve(img.src); return; }
-  
-          const width = maxX - minX + 1;
-          const height = maxY - minY + 1;
-  
+          const width = maxX - minX + 1, height = maxY - minY + 1;
           const cutCanvas = document.createElement('canvas');
-          cutCanvas.width = width;
-          cutCanvas.height = height;
+          cutCanvas.width = width; cutCanvas.height = height;
           const cutCtx = cutCanvas.getContext('2d');
           if(!cutCtx) { resolve(img.src); return; }
-  
           cutCtx.drawImage(canvas, minX, minY, width, height, 0, 0, width, height);
           resolve(cutCanvas.toDataURL('image/png'));
         };
@@ -166,7 +142,7 @@ const processAndTrimImage = (file: File | Blob): Promise<string> => {
       };
       reader.readAsDataURL(file);
     });
-  };
+};
 
 const downloadAndProcessImage = async (url: string): Promise<string> => {
     try {
@@ -175,7 +151,6 @@ const downloadAndProcessImage = async (url: string): Promise<string> => {
         const blob = await response.blob();
         return await processAndTrimImage(blob);
     } catch (error) {
-        console.warn("Could not download/process image from URL (likely CORS). Using raw URL.", error);
         return url;
     }
 };
@@ -188,7 +163,7 @@ function App() {
         try {
             const saved = localStorage.getItem('dc_pr_engineers');
             if (saved) return JSON.parse(saved);
-        } catch (error) { console.error("Erro ao carregar engenheiros", error); }
+        } catch (error) {}
     }
     return INITIAL_ENGINEERS;
   });
@@ -199,7 +174,7 @@ function App() {
 
   const [formData, setFormData] = useState<LaudoForm>({
     municipio: 'Rio Bonito do Iguaçu',
-    data: getLocalDate(), // Initializing with Local Date
+    data: getLocalDate(),
     protocolo: '',
     engineerId: '',
     zona: ZoneType.URBANO,
@@ -225,10 +200,11 @@ function App() {
     parecerFinal: ''
   });
 
+  // O zoom padrão de 14 é ideal para cobrir a maior parte da área urbana (centro)
   const [mapState, setMapState] = useState({
       lat: -25.4897,
       lng: -52.5283,
-      zoom: isMobile ? 11 : 15
+      zoom: 14
   });
   
   const [isSpecificLocation, setIsSpecificLocation] = useState(false);
@@ -285,13 +261,13 @@ function App() {
 
   const handleCityChange = (cityName: string) => {
     const city = PARANA_CITIES.find(c => c.name === cityName);
-    if (city) setMapState(prev => ({ ...prev, lat: city.lat, lng: city.lng, zoom: isMobile ? 11 : 15 }));
+    if (city) setMapState(prev => ({ ...prev, lat: city.lat, lng: city.lng, zoom: 14 }));
     setIsSpecificLocation(false);
     setFormData(prev => ({
-      ...prev,
-      municipio: cityName,
+      ...prev, municipio: cityName,
       lat: city ? city.lat : prev.lat,
-      lng: city ? city.lng : prev.lng
+      lng: city ? city.lng : prev.lng,
+      indicacaoFiscal: ''
     }));
     setIndicacaoFiscalValid(null);
   };
@@ -302,9 +278,7 @@ function App() {
       setShowEngineerModal(true);
       setNewEngineer({ state: 'PR', name: '', crea: '', institution: 'Voluntário' });
       setEditingEngineer(null);
-    } else {
-      setFormData(prev => ({ ...prev, engineerId: val }));
-    }
+    } else { setFormData(prev => ({ ...prev, engineerId: val })); }
   };
 
   const handleClassificationChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -328,9 +302,8 @@ function App() {
   const handleIndicacaoFiscalBlur = () => {
     if (formData.municipio === 'Rio Bonito do Iguaçu') {
         const val = formData.indicacaoFiscal;
-        if (val.length > 0) {
-            setIndicacaoFiscalValid(val.length >= 21);
-        } else setIndicacaoFiscalValid(null);
+        if (val.length > 0) setIndicacaoFiscalValid(val.replace(/\./g, '').length >= 16);
+        else setIndicacaoFiscalValid(null);
     } else setIndicacaoFiscalValid(null);
   };
 
@@ -409,32 +382,6 @@ function App() {
     else if (val.length === 0) { setCpfValid(null); setCpfErrorMessage(''); }
   };
 
-  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>, position: 'left' | 'right') => {
-    const file = e.target.files?.[0];
-    if (file) {
-        try {
-            const base64String = await processAndTrimImage(file);
-             if (position === 'left') setFormData(prev => ({ ...prev, logoEsquerda: base64String }));
-             else setFormData(prev => ({ ...prev, logoDireita: base64String }));
-        } catch (error) {}
-    }
-  };
-
-  const removeLogo = (position: 'left' | 'right') => {
-      if (position === 'left') setFormData(prev => ({ ...prev, logoEsquerda: '' }));
-      else setFormData(prev => ({ ...prev, logoDireita: '' }));
-  };
-
-  const handleUrlInput = async (e: React.FocusEvent<HTMLInputElement> | React.KeyboardEvent<HTMLInputElement>, field: 'logoEsquerda' | 'logoDireita') => {
-    const target = e.target as HTMLInputElement;
-    const url = target.value;
-    if (url && url.length > 5) {
-        const processedImage = await downloadAndProcessImage(url);
-        setFormData(prev => ({ ...prev, [field]: processedImage }));
-        target.value = ''; 
-    }
-  };
-
   const validateForm = () => {
     if (!selectedEngineer) { alert("Selecione um engenheiro"); return false; }
     if (!formData.municipio) { alert("Selecione um município"); return false; }
@@ -449,7 +396,7 @@ function App() {
     const mapElement = document.getElementById('map-print-container');
     if (!mapElement) return null;
     try {
-        const captureScale = isMobile ? 1 : 2;
+        const captureScale = 2; // Alta resolução
         const canvas = await html2canvas(mapElement, {
             useCORS: true,
             allowTaint: false,
@@ -457,19 +404,27 @@ function App() {
             scale: captureScale,
             backgroundColor: null,
             onclone: (clonedDoc) => {
+                // Remove controles para a foto
                 const elementsToHide = ['.leaflet-control-container', '.map-custom-controls', '.map-instruction'];
                 elementsToHide.forEach(selector => {
                     const el = clonedDoc.querySelector(selector);
                     if (el) (el as HTMLElement).style.display = 'none';
                 });
+
+                // TRUQUE PARA CONTEXTO NO MOBILE:
+                // Forçamos o container do mapa a ter uma largura "Desktop" (1200px) no clone.
+                // Isso faz com que o html2canvas capture uma área muito maior, mostrando ruas vizinhas
+                // em vez de apenas o recorte estreito da tela do celular.
                 const clonedMapContainer = clonedDoc.getElementById('map-print-container');
                 if (clonedMapContainer) {
-                    if (isMobile) {
-                        clonedMapContainer.style.width = '1200px';
-                        clonedMapContainer.style.height = '675px';
-                    } else {
-                        clonedMapContainer.style.width = mapElement.offsetWidth + 'px';
-                        clonedMapContainer.style.height = mapElement.offsetHeight + 'px';
+                    clonedMapContainer.style.width = '1200px';
+                    clonedMapContainer.style.height = '675px'; // 16:9
+                    
+                    // Força o Leaflet interno a preencher o espaço (se possível via estilos)
+                    const mapEl = clonedMapContainer.querySelector('.leaflet-container');
+                    if (mapEl) {
+                        (mapEl as HTMLElement).style.width = '100%';
+                        (mapEl as HTMLElement).style.height = '100%';
                     }
                 }
             }
@@ -478,37 +433,26 @@ function App() {
     } catch (e) { return null; }
   };
 
-  const sendDataToSheet = async () => {
-    if (!GOOGLE_SHEETS_URL || !selectedEngineer) return;
-    setIsSyncing(true); setSyncStatus('idle');
-    const damageSummary = formData.danos.map(d => `${d.type}: ${d.description || 'Sem descrição'}`).join(' | ');
-    const payload = {
-        protocolo: formData.protocolo, municipio: formData.municipio,
-        engineerName: selectedEngineer.name, engineerCrea: selectedEngineer.crea,
-        zona: formData.zona, requerente: formData.requerente || 'N/I',
-        cpf: formData.cpfRequerente || 'N/I', endereco: formData.endereco || 'N/I',
-        tipologia: formData.tipologia || 'N/I', classificacao: formData.classificacao,
-        nivelDestruicao: damageStats.level, resumoDanos: damageSummary
-    };
-    try {
-        await fetch(GOOGLE_SHEETS_URL, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-        setSyncStatus('success');
-    } catch (error) { setSyncStatus('error'); } finally { setIsSyncing(false); }
-  };
-
+  // Fixed the "Cannot find name 'handlePreview'" error by implementing the function
   const handlePreview = async () => {
-    if (!validateForm()) return;
-    if (selectedEngineer) {
-        const mapImg = await captureMap();
-        const url = await generateLaudoPDF({ ...formData, id_laudo: idLaudo }, selectedEngineer, 'preview', mapImg || undefined, isSpecificLocation);
-        if (url) { setPreviewUrl(url); setShowPreview(true); }
+    if (!validateForm() || !selectedEngineer) return;
+    const mapImg = await captureMap();
+    const url = await generateLaudoPDF(
+      { ...formData, id_laudo: idLaudo },
+      selectedEngineer,
+      'preview',
+      mapImg || undefined,
+      isSpecificLocation
+    );
+    if (url && typeof url === 'string') {
+        setPreviewUrl(url);
+        setShowPreview(true);
     }
   };
 
   const handleDownload = async (e?: React.MouseEvent) => {
     e?.preventDefault();
     if (!validateForm() || !selectedEngineer) return;
-    if (GOOGLE_SHEETS_URL) sendDataToSheet();
     const mapImg = await captureMap();
     await generateLaudoPDF({ ...formData, id_laudo: idLaudo }, selectedEngineer, 'save', mapImg || undefined, isSpecificLocation);
     setTimeout(() => {
@@ -516,7 +460,6 @@ function App() {
          setIdLaudo(nextId);
          localStorage.setItem('laudo_seq', nextId);
          const currentCity = PARANA_CITIES.find(c => c.name === formData.municipio);
-         // Fixed typo: replaced 'city.lat' and 'city.lng' with 'currentCity.lat' and 'currentCity.lng'
          const defaultLat = currentCity ? currentCity.lat : -25.4897;
          const defaultLng = currentCity ? currentCity.lng : -52.5283;
          setFormData(prev => ({
@@ -525,11 +468,11 @@ function App() {
              inscricaoImobiliaria: '', matricula: '', nirfCib: '', incra: '',
              proprietario: '', requerente: '', cpfRequerente: '',
              endereco: '', bairro: '', cep: '', lat: defaultLat, lng: defaultLng,
-             tipologia: '' as BuildingTypology, tipologiaOutro: '',
+             tipologia: '' as BuildingTypology, tipologiaOutro: '', // Fixed typo from tipology to tipologia
              danos: [], classificacao: '' as DamageClassification, parecerFinal: ''
          }));
          setCpfValid(null); setCpfErrorMessage(''); setIndicacaoFiscalValid(null); setProtocoloValid(null);
-         setMapState({ lat: defaultLat, lng: defaultLng, zoom: isMobile ? 11 : 15 });
+         setMapState({ lat: defaultLat, lng: defaultLng, zoom: 14 });
          setIsSpecificLocation(false); setSyncStatus('idle');
          window.scrollTo({ top: 0, behavior: 'smooth' });
          alert("PDF gerado com sucesso! O formulário foi limpo para o próximo laudo.");
@@ -557,10 +500,12 @@ function App() {
                 <div className="p-6 grid grid-cols-1 md:grid-cols-3 gap-6 items-start">
                     <div className="w-full max-w-sm mx-auto md:max-w-none">
                         <label className={labelClass}>Município</label>
-                        <select className={inputClass} value={formData.municipio} onChange={(e) => handleCityChange(e.target.value)}>
-                            <option value="">Selecione o Município...</option>
-                            {PARANA_CITIES.map(city => (<option key={city.name} value={city.name}>{city.name}</option>))}
-                        </select>
+                        {/* Integrated CityAutocomplete for better UX with search functionality */}
+                        <CityAutocomplete 
+                          cities={PARANA_CITIES} 
+                          selectedCity={formData.municipio} 
+                          onSelect={handleCityChange} 
+                        />
                     </div>
                     <div className="w-full max-w-sm mx-auto md:max-w-none">
                         <label className={labelClass}>Data da Vistoria</label>
@@ -606,10 +551,7 @@ function App() {
             </section>
 
             <section className="bg-white rounded-xl shadow-md border-t-4 border-blue-600 overflow-hidden">
-                <div className="bg-gray-50 px-6 py-4 border-b border-gray-200 flex items-center gap-2">
-                    <Building className="text-orange-600" size={24} />
-                    <h2 className="text-lg font-bold text-blue-900 uppercase">3. Dados do Imóvel</h2>
-                </div>
+                <div className="bg-gray-50 px-6 py-4 border-b border-gray-200 flex items-center gap-2"><Building className="text-orange-600" size={24} /><h2 className="text-lg font-bold text-blue-900 uppercase">3. Dados do Imóvel</h2></div>
                 <div className="p-6 space-y-6">
                     <div className="grid grid-cols-2 gap-6 border-b border-gray-200 pb-6 mb-2">
                         <div onClick={() => setFormData({...formData, zona: ZoneType.URBANO})} className={`cursor-pointer flex flex-col md:flex-row items-center gap-4 p-4 rounded-xl border-2 transition-all duration-200 ${formData.zona === ZoneType.URBANO ? 'border-orange-500 bg-orange-50 shadow-md transform scale-[1.02]' : 'border-gray-200 bg-white hover:border-orange-300 hover:bg-gray-50'}`}>
@@ -677,21 +619,10 @@ function App() {
                 <div className="p-6"><div className="bg-blue-50 border border-blue-100 p-4 rounded-lg mb-4"><p className="text-sm text-blue-800"><strong>Nota:</strong> O texto abaixo é gerado automaticamente com base na Classificação dos Danos (Lei Estadual nº 22.787/2025). Você pode complementar com informações adicionais se necessário.</p></div><label className={labelClass}>Texto do Parecer</label><textarea rows={6} className={inputClass} style={{ height: 'auto', minHeight: '150px' }} value={formData.parecerFinal} onChange={e => setFormData({...formData, parecerFinal: e.target.value})} placeholder="Selecione uma classificação para gerar o parecer padrão..." /></div>
             </section>
 
-            {showCustomization && (
-                <section className="bg-white rounded-xl shadow-md border-t-4 border-gray-400 overflow-hidden animate-in slide-in-from-bottom-4 fade-in duration-300">
-                    <div className="bg-gray-50 px-6 py-4 border-b border-gray-200 flex items-center gap-2"><ImageIcon className="text-gray-600" size={24} /><h2 className="text-lg font-bold text-gray-800 uppercase">Personalização (Logos)</h2></div>
-                    <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-8">
-                        <div><label className={labelClass}>Logo Esquerda (Brasão)</label><p className="text-xs text-gray-500 mb-2">Topo Esquerdo</p>{!formData.logoEsquerda ? (<div className="space-y-3"><label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:bg-gray-50 hover:border-blue-400 transition-colors"><Upload className="text-gray-400 mb-2" /><span className="text-sm text-gray-500 font-medium">Enviar Arquivo</span><input type="file" accept="image/*" className="hidden" onChange={(e) => handleLogoUpload(e, 'left')} /></label><div className="relative"><div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><LinkIcon size={14} className="text-gray-400" /></div><input type="text" className={`${inputClass} pl-8 text-xs`} placeholder="Ou cole a URL da imagem aqui..." onBlur={(e) => handleUrlInput(e, 'logoEsquerda')} onKeyDown={(e) => e.key === 'Enter' && handleUrlInput(e, 'logoEsquerda')} /></div></div>) : (<div className="relative w-full h-32 border border-gray-200 rounded-lg p-2 flex items-center justify-center bg-gray-50"><img src={formData.logoEsquerda} alt="Logo Esquerda" className="max-h-full max-w-full object-contain" /><button type="button" onClick={() => removeLogo('left')} className="absolute top-2 right-2 bg-red-500 text-white p-1 rounded-full hover:bg-red-600 shadow-sm"><X size={16} /></button></div>)}</div>
-                        <div><label className={labelClass}>Logo Direita (Defesa Civil)</label><p className="text-xs text-gray-500 mb-2">Topo Direito</p>{!formData.logoDireita ? (<div className="space-y-3"><label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:bg-gray-50 hover:border-blue-400 transition-colors"><Upload className="text-gray-400 mb-2" /><span className="text-sm text-gray-500 font-medium">Enviar Arquivo</span><input type="file" accept="image/*" className="hidden" onChange={(e) => handleLogoUpload(e, 'right')} /></label><div className="relative"><div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><LinkIcon size={14} className="text-gray-400" /></div><input type="text" className={`${inputClass} pl-8 text-xs`} placeholder="Ou cole a URL da imagem aqui..." onBlur={(e) => handleUrlInput(e, 'logoDireita')} onKeyDown={(e) => e.key === 'Enter' && handleUrlInput(e, 'logoDireita')} /></div></div>) : (<div className="relative w-full h-32 border border-gray-200 rounded-lg p-2 flex items-center justify-center bg-gray-50"><img src={formData.logoDireita} alt="Logo Direita" className="max-h-full max-w-full object-contain" /><button type="button" onClick={() => removeLogo('right')} className="absolute top-2 right-2 bg-red-500 text-white p-1 rounded-full hover:bg-red-600 shadow-sm"><X size={16} /></button></div>)}</div>
-                    </div>
-                </section>
-            )}
-
             <div className="bg-white rounded-xl shadow-md p-6 border-t-4 border-gray-400">
                 <div className="flex flex-col md:flex-row items-center justify-between gap-4">
                     <button type="button" onClick={() => setShowCustomization(!showCustomization)} className="opacity-10 hover:opacity-100 text-gray-500 hover:text-blue-900 hover:bg-gray-100 p-3 rounded-full transition-all flex items-center gap-2 text-sm font-bold uppercase" title="Configurar Logos e Cabeçalho"><Settings size={24} /></button>
                     <div className="flex flex-col md:flex-row gap-4 w-full md:w-auto items-center">
-                        {GOOGLE_SHEETS_URL && (<div className="mr-4 flex items-center gap-2 text-sm font-bold">{isSyncing ? (<span className="text-blue-600 flex items-center gap-1"><Loader2 size={16} className="animate-spin" /> Sincronizando...</span>) : syncStatus === 'success' ? (<span className="text-green-600 flex items-center gap-1"><Check size={16} /> Dados Enviados</span>) : syncStatus === 'error' ? (<span className="text-red-500 flex items-center gap-1"><XCircle size={16} /> Falha no Envio</span>) : null}</div>)}
                         <button type="button" onClick={handlePreview} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 px-8 rounded-lg shadow-lg flex items-center justify-center gap-3 transition-all active:scale-95 uppercase tracking-wide text-sm md:text-base border border-blue-800 w-full md:w-auto"><Eye size={20} /> Visualizar Laudo</button>
                         <button type="button" onClick={handleDownload} className="bg-orange-500 hover:bg-orange-600 text-white font-bold py-4 px-8 rounded-lg shadow-lg flex items-center justify-center gap-3 transition-all active:scale-95 uppercase tracking-wide text-sm md:text-base border border-orange-600 w-full md:w-auto"><Save size={20} /> Emitir PDF</button>
                     </div>
