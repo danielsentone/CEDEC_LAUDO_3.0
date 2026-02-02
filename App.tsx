@@ -606,6 +606,16 @@ function App() {
             </section>
 
             <div className="bg-white rounded-xl shadow-md p-6 border-t-4 border-gray-400">
+                <div className="bg-orange-50 border-l-4 border-orange-500 p-4 mb-6 rounded-r-lg shadow-sm">
+                    <div className="flex items-start gap-3">
+                        <div className="mt-0.5">
+                            <AlertTriangle className="text-orange-600" size={18} />
+                        </div>
+                        <p className="text-sm text-orange-900 leading-relaxed font-medium">
+                            Se estiver gerando um laudo a partir de um celular, prefira localizar o endereço no mapa com seu aparelho na horizontal, assim como ao tirar suas fotos (em danos observados) e ao pressionar <strong>VISUALIZAR LAUDO</strong> ou <strong>EMITIR PDF</strong> (nesta página). Isso porque o laudo em PDF faz um print do mapa que está sendo visualizado no seu dispositivo e suas fotos ficam dimensionadas de forma mais legível quando obtidas na horizontal.
+                        </p>
+                    </div>
+                </div>
                 <div className="flex flex-col md:flex-row items-center justify-between gap-4">
                     <button type="button" onClick={() => setShowCustomization(!showCustomization)} className="opacity-10 hover:opacity-100 text-gray-500 hover:text-blue-900 hover:bg-gray-100 p-3 rounded-full transition-all flex items-center gap-2 text-sm font-bold uppercase" title="Configurar Logos e Cabeçalho"><Settings size={24} /></button>
                     <div className="flex flex-col md:flex-row gap-4 w-full md:w-auto items-center">
