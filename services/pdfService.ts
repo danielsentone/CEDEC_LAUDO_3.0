@@ -148,7 +148,10 @@ export const generateLaudoPDF = async (
   doc.text('1. LOCALIZAÇÃO, DATA E PROTOCOLO', margin + 2, yPos);
   yPos += 8;
 
-  const dateValue = new Date(data.data).toLocaleDateString('pt-BR');
+  // Fix: Manual date split to avoid timezone shifts and parsing errors
+  const dateParts = data.data.split('-');
+  const dateValue = dateParts.length === 3 ? `${dateParts[2]}/${dateParts[1]}/${dateParts[0]}` : data.data;
+
   printKeyValue('MUNICÍPIO:', formatValue(data.municipio), margin, yPos, 95);
   printKeyValue('DATA DA VISTORIA:', dateValue, margin + 100, yPos, contentWidth - 100);
   yPos += LINE_HEIGHT + 2; 

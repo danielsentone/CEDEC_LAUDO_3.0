@@ -57,30 +57,48 @@ const formatProtocolo = (value: string) => {
 };
 
 /**
- * Máscara Indicação Fiscal: 00.00.000.0000.0000.0
- * Posições dos pontos após dígitos: 2, 4, 7, 11, 15
+ * Máscara Indicação Fiscal: NN.NN.NNN.TTTT.TTTT.NNN
+ * N = Número, T = Caracter (Alfanumérico)
+ * Pontos após dígitos: 2, 4, 7, 11, 15
  */
 const formatIndicacaoFiscal = (value: string) => {
-  const numbers = value.replace(/\D/g, '');
-  return numbers
-    .replace(/^(\d{2})(\d)/, '$1.$2')
-    .replace(/^(\d{2})\.(\d{2})(\d)/, '$1.$2.$3')
-    .replace(/^(\d{2})\.(\d{2})\.(\d{3})(\d)/, '$1.$2.$3.$4')
-    .replace(/^(\d{2})\.(\d{2})\.(\d{3})\.(\d{4})(\d)/, '$1.$2.$3.$4.$5')
-    .replace(/^(\d{2})\.(\d{2})\.(\d{3})\.(\d{4})\.(\d{4})(\d)/, '$1.$2.$3.$4.$5.$6')
-    .substring(0, 21);
+  const raw = value.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+  
+  // Filtra baseando-se no tipo esperado em cada posição
+  let filtered = '';
+  for (let i = 0; i < raw.length; i++) {
+    if (filtered.length >= 18) break;
+    const char = raw[i];
+    const idx = filtered.length;
+    // N (número) nas posições: 0-6 e 15-17
+    const isN = (idx <= 6 || idx >= 15);
+    if (isN) {
+      if (/\d/.test(char)) filtered += char;
+    } else {
+      // T (caracter/alfanumérico) nas posições: 7-14
+      filtered += char;
+    }
+  }
+
+  return filtered
+    .replace(/^([a-zA-Z0-9]{2})([a-zA-Z0-9])/, '$1.$2')
+    .replace(/^([a-zA-Z0-9]{2})\.([a-zA-Z0-9]{2})([a-zA-Z0-9])/, '$1.$2.$3')
+    .replace(/^([a-zA-Z0-9]{2})\.([a-zA-Z0-9]{2})\.([a-zA-Z0-9]{3})([a-zA-Z0-9])/, '$1.$2.$3.$4')
+    .replace(/^([a-zA-Z0-9]{2})\.([a-zA-Z0-9]{2})\.([a-zA-Z0-9]{3})\.([a-zA-Z0-9]{4})([a-zA-Z0-9])/, '$1.$2.$3.$4.$5')
+    .replace(/^([a-zA-Z0-9]{2})\.([a-zA-Z0-9]{2})\.([a-zA-Z0-9]{3})\.([a-zA-Z0-9]{4})\.([a-zA-Z0-9]{4})([a-zA-Z0-9])/, '$1.$2.$3.$4.$5.$6')
+    .substring(0, 23);
 };
 
 const parseIndicacaoFiscal = (value: string) => {
-    const numbers = value.replace(/\D/g, '');
-    if (numbers.length >= 16) {
+    const raw = value.replace(/[^a-zA-Z0-9]/g, '');
+    if (raw.length >= 18) {
         return {
-            setor: numbers.substring(0, 2),
-            quadra: numbers.substring(2, 4),
-            lote: numbers.substring(4, 7),
-            sublote: numbers.substring(7, 11),
-            unidade: numbers.substring(11, 15),
-            digito: numbers.substring(15, 16)
+            setor: raw.substring(0, 2),
+            quadra: raw.substring(2, 4),
+            lote: raw.substring(4, 7),
+            sublote: raw.substring(7, 11),
+            unidade: raw.substring(11, 15),
+            digito: raw.substring(15, 18)
         };
     }
     return undefined;
@@ -300,7 +318,7 @@ function App() {
   const handleIndicacaoFiscalBlur = () => {
     if (formData.municipio === 'Rio Bonito do Iguaçu') {
         const val = formData.indicacaoFiscal;
-        if (val.length > 0) setIndicacaoFiscalValid(val.replace(/\./g, '').length >= 16);
+        if (val.length > 0) setIndicacaoFiscalValid(val.replace(/\./g, '').length >= 18);
         else setIndicacaoFiscalValid(null);
     } else setIndicacaoFiscalValid(null);
   };
@@ -554,7 +572,7 @@ function App() {
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6 animate-in fade-in">
                         {formData.zona === ZoneType.URBANO ? (
                             <>
-                                <div><label className={labelClass}>Indicação Fiscal</label><div className="relative h-[42px]"><input type="text" className={`${inputClass} ${indicacaoFiscalValid === false ? 'border-red-500 ring-1 ring-red-500' : ''} ${indicacaoFiscalValid === true ? 'border-green-500 ring-1 ring-green-500' : ''}`} value={formData.indicacaoFiscal} onChange={handleIndicacaoFiscalChange} onBlur={handleIndicacaoFiscalBlur} placeholder={formData.municipio === 'Rio Bonito do Iguaçu' ? "00.00.000.0000.0000.0" : "Digite a Indicação Fiscal..."} /><div className="absolute right-3 top-2.5">{indicacaoFiscalValid === true && <CheckCircle size={20} className="text-green-600" />}{indicacaoFiscalValid === false && <XCircle size={20} className="text-red-600" />}</div></div>{indicacaoFiscalValid === false && <p className="text-[10px] text-red-600 font-bold mt-1 uppercase">Indicação Fiscal incompleta</p>}</div>
+                                <div><label className={labelClass}>Indicação Fiscal</label><div className="relative h-[42px]"><input type="text" className={`${inputClass} ${indicacaoFiscalValid === false ? 'border-red-500 ring-1 ring-red-500' : ''} ${indicacaoFiscalValid === true ? 'border-green-500 ring-1 ring-green-500' : ''}`} value={formData.indicacaoFiscal} onChange={handleIndicacaoFiscalChange} onBlur={handleIndicacaoFiscalBlur} placeholder={formData.municipio === 'Rio Bonito do Iguaçu' ? "00.00.000.0000.0000.000" : "Digite a Indicação Fiscal..."} /><div className="absolute right-3 top-2.5">{indicacaoFiscalValid === true && <CheckCircle size={20} className="text-green-600" />}{indicacaoFiscalValid === false && <XCircle size={20} className="text-red-600" />}</div></div>{indicacaoFiscalValid === false && <p className="text-[10px] text-red-600 font-bold mt-1 uppercase">Indicação Fiscal incompleta</p>}</div>
                                 <div><label className={labelClass}>Inscrição Municipal</label><input type="text" className={inputClass} value={formData.inscricaoImobiliaria} onChange={e => setFormData({...formData, inscricaoImobiliaria: e.target.value})} /></div>
                                 <div><label className={labelClass}>Matrícula</label><input type="text" className={inputClass} value={formData.matricula} onChange={e => setFormData({...formData, matricula: e.target.value})} /></div>
                             </>
