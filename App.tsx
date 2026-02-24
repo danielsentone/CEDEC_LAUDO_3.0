@@ -87,7 +87,7 @@ const toTitleCase = (str: any) => {
  * Máscara Indicação Fiscal: NN.NN.NNN.TTTT.TTTT.NNN
  */
 const formatIndicacaoFiscal = (value: string) => {
-  const raw = value.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+  const raw = value.replace(/[^a-zA-Z0-9-]/g, '').toUpperCase();
   let filtered = '';
   for (let i = 0; i < raw.length; i++) {
     if (filtered.length >= 18) break;
@@ -95,23 +95,23 @@ const formatIndicacaoFiscal = (value: string) => {
     const idx = filtered.length;
     const isN = (idx <= 6 || idx >= 15);
     if (isN) {
-      if (/\d/.test(char)) filtered += char;
+      if (/[\d-]/.test(char)) filtered += char;
     } else {
       filtered += char;
     }
   }
 
   return filtered
-    .replace(/^([a-zA-Z0-9]{2})([a-zA-Z0-9])/, '$1.$2')
-    .replace(/^([a-zA-Z0-9]{2})\.([a-zA-Z0-9]{2})([a-zA-Z0-9])/, '$1.$2.$3')
-    .replace(/^([a-zA-Z0-9]{2})\.([a-zA-Z0-9]{2})\.([a-zA-Z0-9]{3})([a-zA-Z0-9])/, '$1.$2.$3.$4')
-    .replace(/^([a-zA-Z0-9]{2})\.([a-zA-Z0-9]{2})\.([a-zA-Z0-9]{3})\.([a-zA-Z0-9]{4})([a-zA-Z0-9])/, '$1.$2.$3.$4.$5')
-    .replace(/^([a-zA-Z0-9]{2})\.([a-zA-Z0-9]{2})\.([a-zA-Z0-9]{3})\.([a-zA-Z0-9]{4})\.([a-zA-Z0-9]{4})([a-zA-Z0-9])/, '$1.$2.$3.$4.$5.$6')
+    .replace(/^([a-zA-Z0-9-]{2})([a-zA-Z0-9-])/, '$1.$2')
+    .replace(/^([a-zA-Z0-9-]{2})\.([a-zA-Z0-9-]{2})([a-zA-Z0-9-])/, '$1.$2.$3')
+    .replace(/^([a-zA-Z0-9-]{2})\.([a-zA-Z0-9-]{2})\.([a-zA-Z0-9-]{3})([a-zA-Z0-9-])/, '$1.$2.$3.$4')
+    .replace(/^([a-zA-Z0-9-]{2})\.([a-zA-Z0-9-]{2})\.([a-zA-Z0-9-]{3})\.([a-zA-Z0-9-]{4})([a-zA-Z0-9-])/, '$1.$2.$3.$4.$5')
+    .replace(/^([a-zA-Z0-9-]{2})\.([a-zA-Z0-9-]{2})\.([a-zA-Z0-9-]{3})\.([a-zA-Z0-9-]{4})\.([a-zA-Z0-9-]{4})([a-zA-Z0-9-])/, '$1.$2.$3.$4.$5.$6')
     .substring(0, 23);
 };
 
 const parseIndicacaoFiscal = (value: string) => {
-    const raw = value.replace(/[^a-zA-Z0-9]/g, '');
+    const raw = value.replace(/[^a-zA-Z0-9-]/g, '');
     if (raw.length >= 18) {
         return {
             setor: raw.substring(0, 2),
