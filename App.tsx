@@ -433,6 +433,7 @@ export function App() {
   const [filterCity, setFilterCity] = useState('');
   const [filterEngineer, setFilterEngineer] = useState('');
   const [filterDate, setFilterDate] = useState('');
+  const [filterLaudoStatus, setFilterLaudoStatus] = useState<'all' | 'issued' | 'pending'>('all');
 
   // Fetch Data from Supabase
   useEffect(() => {
@@ -1452,7 +1453,13 @@ export function App() {
           const matchCity = !filterCity || p.municipio === filterCity;
           const matchDate = !filterDate || p.data === filterDate;
           const matchEngineer = !filterEngineer || p.distributedToId === filterEngineer;
-          return matchCity && matchDate && matchEngineer;
+          
+          const hasLaudo = laudoHistory.some(h => h.protocol_id === p.id);
+          const matchStatus = filterLaudoStatus === 'all' || 
+                             (filterLaudoStatus === 'issued' && hasLaudo) || 
+                             (filterLaudoStatus === 'pending' && !hasLaudo);
+
+          return matchCity && matchDate && matchEngineer && matchStatus;
       });
 
       return (
@@ -1471,7 +1478,7 @@ export function App() {
           </div>
 
           {/* Filters Section */}
-          <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 grid grid-cols-1 md:grid-cols-4 gap-4">
               <div>
                   <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Filtrar por Município</label>
                   <select className={inputClass()} value={filterCity || ''} onChange={e => setFilterCity(e.target.value)}>
@@ -1489,6 +1496,14 @@ export function App() {
               <div>
                   <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Filtrar por Data</label>
                   <input type="date" className={inputClass()} value={filterDate} onChange={e => setFilterDate(e.target.value)} />
+              </div>
+              <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Status do Laudo</label>
+                  <select className={inputClass()} value={filterLaudoStatus} onChange={e => setFilterLaudoStatus(e.target.value as any)}>
+                      <option value="all">Todos</option>
+                      <option value="issued">Laudo Emitido</option>
+                      <option value="pending">Sem Laudo</option>
+                  </select>
               </div>
           </div>
 
