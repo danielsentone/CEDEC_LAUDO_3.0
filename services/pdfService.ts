@@ -195,6 +195,7 @@ export const generateLaudoPDF = async (
     addFieldStack('COORDENADAS:', `${data.lat.toFixed(6)}, ${data.lng.toFixed(6)}`);
   }
   addFieldStack('TIPOLOGIA:', formatValue(data.tipologia === BuildingTypology.OUTRO ? data.tipologiaOutro : data.tipologia));
+  addFieldStack('FINALIDADE:', formatValue(data.finalidade.join(' / ')));
 
   yPos += 2; 
 

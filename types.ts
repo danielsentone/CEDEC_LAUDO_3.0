@@ -5,6 +5,7 @@ export interface Engineer {
   state?: string; // For new engineers
   institution?: string; // 'CEDEC' or 'Voluntário'
   isCustom?: boolean;
+  active?: boolean;
 }
 
 export enum DamageType {
@@ -22,19 +23,17 @@ export enum DamageType {
   PILAR = 'Pilar',
   VIGA = 'Viga',
   LAJE = 'Laje',
+  ESQUADRIAS = 'Esquadrias',
   OUTROS = 'Outros',
 }
 
 export enum BuildingTypology {
-  ALVENARIA = 'Casa de Alvenaria',
-  MADEIRA = 'Casa de Madeira',
-  MISTA = 'Casa Mista',
-  LOJA = 'Loja Comercial',
-  PREDIO = 'Prédio Comercial',
-  PAVILHAO_COM = 'Pavilhão Comercial',
-  PAVILHAO_IND = 'Pavilhão Industrial',
-  PUBLICO = 'Equipamento Público',
-  OUTRO = 'Outro',
+  CONCRETO_ALVENARIA = 'Concreto Armado / Alvenaria',
+  MADEIRA = 'Madeira',
+  MISTA = 'Mista',
+  ALVENARIA_ESTRUTURAL = 'Alvenaria Estrutural',
+  PAREDES_CONCRETO = 'Paredes de Concreto',
+  OUTRO = 'Outros',
 }
 
 export enum DamageClassification {
@@ -64,11 +63,53 @@ export interface IndicacaoFiscalParts {
   digito: string;
 }
 
+// Interface para o Cadastro Inicial (Protocolo)
+export interface Protocolo {
+  id: string;
+  data: string;
+  municipio: string;
+  numeroProtocolo: string; // SID
+  requerente: string;
+  cpf: string;
+  telefone: string;
+  
+  // Dados do Imóvel
+  zona: ZoneType;
+  indicacaoFiscal: string;
+  indicacaoFiscalParts?: IndicacaoFiscalParts;
+  inscricaoImobiliaria: string;
+  matricula: string;
+  nirfCib: string;
+  incra: string;
+  proprietario: string;
+  endereco: string;
+  bairro: string;
+  cep: string;
+  lat: number;
+  lng: number;
+  zoom?: number; // Added: Armazena o nível de zoom do mapa
+
+  // Avaliação Preliminar
+  descricaoNivelDestruicao: string;
+  percentualDestruicao: '0%' | '40%' | '70%' | '100%';
+  
+  engineerId: string; // Quem cadastrou
+  distributedToId?: string; // NOVO: Para quem foi distribuído
+}
+
+export interface LaudoHistory {
+  id: string;
+  protocol_id: string;
+  engineer_id: string;
+  engineer_name: string;
+  created_at: string;
+}
+
 export interface LaudoForm {
   id_laudo?: string;
   municipio: string;
   data: string;
-  protocolo: string; // New field (SID)
+  protocolo: string; // SID
   engineerId: string;
   customEngineer?: Engineer; // If editing or creating new
   
@@ -89,8 +130,9 @@ export interface LaudoForm {
 
   proprietario: string;
   requerente: string;
-  cpfRequerente: string; // New field
-  
+  cpfRequerente: string; 
+  telefoneRequerente?: string; // Added field
+
   endereco: string;
   bairro: string;
   cep: string;
@@ -98,15 +140,28 @@ export interface LaudoForm {
   lng: number;
   tipologia: BuildingTypology;
   tipologiaOutro: string;
+  finalidade: string[]; // ['Residencial', 'Comercial']
   danos: DamageEntry[];
   classificacao: DamageClassification;
   
   // New Field
   parecerFinal: string;
+  
+  // Reference Field (Not for PDF)
+  descricaoNivelDestruicao?: string; 
 }
 
 export interface City {
   name: string;
   lat: number;
   lng: number;
+}
+
+export interface PropertyData {
+  id?: string;
+  municipio: string;
+  inscricao_municipal: string;
+  indicacao_fiscal: string;
+  logradouro: string;
+  proprietario: string;
 }

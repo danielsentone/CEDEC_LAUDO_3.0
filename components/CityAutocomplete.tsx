@@ -6,22 +6,23 @@ interface CityAutocompleteProps {
   cities: City[];
   selectedCity: string;
   onSelect: (cityName: string) => void;
+  disabled?: boolean;
 }
 
-export const CityAutocomplete: React.FC<CityAutocompleteProps> = ({ cities, selectedCity, onSelect }) => {
-  const [inputValue, setInputValue] = useState(selectedCity);
+export const CityAutocomplete: React.FC<CityAutocompleteProps> = ({ cities, selectedCity, onSelect, disabled }) => {
+  const [inputValue, setInputValue] = useState(selectedCity || '');
   const [isOpen, setIsOpen] = useState(false);
   const [filteredCities, setFilteredCities] = useState<City[]>(cities);
   const wrapperRef = useRef<HTMLDivElement>(null);
 
   // Sincroniza o input quando a seleção externa muda (ex: carregamento inicial)
   useEffect(() => {
-    setInputValue(selectedCity);
+    setInputValue(selectedCity || '');
   }, [selectedCity]);
 
   // Filtra a lista conforme digita
   useEffect(() => {
-    if (inputValue === '') {
+    if (!inputValue) {
       setFilteredCities(cities);
     } else {
       const lower = inputValue.toLowerCase();
@@ -43,12 +44,12 @@ export const CityAutocomplete: React.FC<CityAutocompleteProps> = ({ cities, sele
       if (wrapperRef.current && !wrapperRef.current.contains(event.target as Node)) {
         setIsOpen(false);
         // Se o usuário digitou algo mas não selecionou, tenta reverter para o selecionado ou limpar se não houver match exato
-        if (inputValue !== selectedCity) {
+        if (inputValue && selectedCity && inputValue !== selectedCity) {
              const exactMatch = cities.find(c => c.name.toLowerCase() === inputValue.toLowerCase());
              if (exactMatch) {
                  onSelect(exactMatch.name);
              } else {
-                 setInputValue(selectedCity);
+                 setInputValue(selectedCity || '');
              }
         }
       }
@@ -75,15 +76,17 @@ export const CityAutocomplete: React.FC<CityAutocompleteProps> = ({ cities, sele
       <div className="relative">
         <input
           type="text"
-          className="w-full rounded-md border-gray-300 shadow-sm focus:border-orange-500 focus:ring-orange-500 py-2 pl-3 pr-10 border bg-white text-black"
+          disabled={disabled}
+          className={`w-full rounded-md border-gray-300 shadow-sm focus:border-orange-500 focus:ring-orange-500 py-2 pl-3 pr-10 border bg-white text-black ${disabled ? 'bg-gray-100 cursor-not-allowed text-gray-500' : ''}`}
           placeholder="Digite para buscar o município..."
           value={inputValue}
           onChange={(e) => {
             setInputValue(e.target.value);
             if (!isOpen) setIsOpen(true);
           }}
-          onFocus={() => setIsOpen(true)}
+          onFocus={() => !disabled && setIsOpen(true)}
         />
+        {!disabled && (
         <div className="absolute inset-y-0 right-0 flex items-center pr-2 gap-1">
              {inputValue && (
                  <button 
@@ -96,10 +99,11 @@ export const CityAutocomplete: React.FC<CityAutocompleteProps> = ({ cities, sele
              )}
              <ChevronsUpDown className="h-4 w-4 text-gray-400 pointer-events-none" />
         </div>
+        )}
       </div>
 
-      {isOpen && (
-        <ul className="absolute z-[100] mt-1 max-h-60 w-full overflow-auto rounded-md bg-white py-1 text-base shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none sm:text-sm">
+      {isOpen && !disabled && (
+        <ul className="absolute z-[100] mt-1 max-h-80 w-full overflow-auto rounded-md bg-white py-1 text-base shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none sm:text-sm">
           {filteredCities.length === 0 ? (
             <li className="relative cursor-default select-none py-2 pl-3 pr-9 text-gray-500 italic">
               Nenhum município encontrado.

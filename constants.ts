@@ -402,16 +402,16 @@ export const PARANA_CITIES: City[] = [
 ];
 
 export const INITIAL_ENGINEERS: Engineer[] = [
-  { id: '5', name: 'Alessandra Santana Calegari', crea: '154.602/D', state: 'PR', institution: 'CEDEC' },
-  { id: '6', name: 'Carlos Germano Justi', crea: '160.730/D', state: 'PR', institution: 'CEDEC' },
-  { id: '7', name: 'Cristian Schwarz', crea: '197.170/D', state: 'PR', institution: 'CEDEC' },
-  { id: '1', name: 'Daniel Tourinho Sentone', crea: '98.123/D', state: 'PR', institution: 'CEDEC' },
-  { id: '2', name: 'Debora Cristina Ruginski Marochi', crea: '187.829/D', state: 'PR', institution: 'CEDEC' },
-  { id: '3', name: 'Lorena Victória Januário Wosch', crea: '145.046/D', state: 'PR', institution: 'CEDEC' },
-  { id: '8', name: 'Regina De Toni', crea: '71.017/D', state: 'PR', institution: 'CEDEC' },
-  { id: '9', name: 'Sandoval Schmitt', crea: '154.223/D', state: 'PR', institution: 'CEDEC' },
-  { id: '4', name: 'Tainara Aline da Silva Finatto', crea: '168.608/D', state: 'PR', institution: 'CEDEC' },
-  { id: '10', name: 'Tatiane Aparecida Mendes da Silva', crea: '230.509/D', state: 'PR', institution: 'CEDEC' },
+  { id: '5', name: 'Alessandra Santana Calegari', crea: '154.602/D', state: 'PR', institution: 'CEDEC', active: true },
+  { id: '6', name: 'Carlos Germano Justi', crea: '160.730/D', state: 'PR', institution: 'CEDEC', active: true },
+  { id: '7', name: 'Cristian Schwarz', crea: '197.170/D', state: 'PR', institution: 'CEDEC', active: true },
+  { id: '1', name: 'Daniel Tourinho Sentone', crea: '98.123/D', state: 'PR', institution: 'CEDEC', active: true },
+  { id: '2', name: 'Debora Cristina Ruginski Marochi', crea: '187.829/D', state: 'PR', institution: 'CEDEC', active: true },
+  { id: '3', name: 'Lorena Victória Januário Wosch', crea: '145.046/D', state: 'PR', institution: 'CEDEC', active: true },
+  { id: '8', name: 'Regina De Toni', crea: '71.017/D', state: 'PR', institution: 'CEDEC', active: true },
+  { id: '9', name: 'Sandoval Schmitt', crea: '154.223/D', state: 'PR', institution: 'CEDEC', active: true },
+  { id: '4', name: 'Tainara Aline da Silva Finatto', crea: '168.608/D', state: 'PR', institution: 'CEDEC', active: true },
+  { id: '10', name: 'Tatiane Aparecida Mendes da Silva', crea: '230.509/D', state: 'PR', institution: 'CEDEC', active: true },
 ];
 
 export const BRAZIL_STATES = [
