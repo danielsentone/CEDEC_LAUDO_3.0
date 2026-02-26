@@ -27,7 +27,7 @@ import { BRASAO_PR_LOGO, DEFESA_CIVIL_PR_LOGO } from './assets/logos';
 import { MapPicker, MapPickerHandle, DownloadState } from './components/MapPicker';
 import { DamageInput } from './components/DamageInput';
 import { CityAutocomplete } from './components/CityAutocomplete';
-import { generateLaudoPDF } from './services/pdfService';
+import { generateLaudoPDF, getLaudoFilename } from './services/pdfService';
 import { supabase } from './services/supabase';
 import { FileText, Save, MapPin, User, AlertTriangle, Building, Shield, Trash2, Edit, Lock, CheckCircle, XCircle, Trees, Eye, X, Download, Image as ImageIcon, Upload, Link as LinkIcon, Settings, CloudUpload, Check, Loader2, ClipboardList, DownloadCloud, Plus, LogIn, Key, LogOut, Zap, List, FilePlus, ArrowLeft, Phone, Users, ShieldCheck, ChevronDown, ChevronUp, Database } from 'lucide-react';
 
@@ -349,6 +349,18 @@ const HistoryButton = ({
                 {history.length}
             </button>
         )}
+        {hasHistory && history[history.length - 1].pdf_url && (
+            <a 
+                href={history[history.length - 1].pdf_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="bg-green-800 text-white px-2 py-1.5 hover:bg-green-900 transition-colors border-l border-green-900 flex items-center justify-center"
+                title="Baixar Último Laudo Emitido"
+                onClick={(e) => e.stopPropagation()}
+            >
+                <Download size={14}/>
+            </a>
+        )}
       </div>
 
       {hasHistory && isOpen && createPortal(
@@ -368,17 +380,33 @@ const HistoryButton = ({
                   <button onClick={() => setIsOpen(false)} className="text-gray-400 hover:text-gray-600"><X size={14}/></button>
               </h4>
               <div className="space-y-2 max-h-60 overflow-y-auto">
-                  {history.map(h => (
-                      <div key={h.id} className="text-xs flex justify-between items-start gap-2 mb-2 border-b border-gray-100 pb-2 last:border-0 last:mb-0 last:pb-0 hover:bg-gray-50 p-1 rounded">
-                          <div>
-                              <div className="font-bold text-blue-900">{h.engineer_name}</div>
-                              <div className="text-gray-500">{new Date(h.created_at).toLocaleString('pt-BR')}</div>
-                          </div>
-                          {isUserAdmin && (
-                              <DeleteConfirmButton onDelete={() => onDeleteHistory(h.id)} />
-                          )}
-                      </div>
-                  ))}
+                                  {history.map(h => (
+                                      <div key={h.id} className="text-xs flex justify-between items-center gap-2 mb-2 border-b border-gray-100 pb-2 last:border-0 last:mb-0 last:pb-0 hover:bg-gray-50 p-2 rounded group/item">
+                                          <div className="flex-1">
+                                              <div className="font-bold text-blue-900">{h.engineer_name}</div>
+                                              <div className="text-[10px] text-gray-500">
+                                                  {new Date(h.created_at).toLocaleString('pt-BR')}
+                                              </div>
+                                          </div>
+                                          <div className="flex items-center gap-1">
+                                              {h.pdf_url && (
+                                                  <a 
+                                                      href={h.pdf_url} 
+                                                      target="_blank" 
+                                                      rel="noopener noreferrer" 
+                                                      className="bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white p-1.5 rounded transition-all flex items-center gap-1 font-bold border border-blue-200"
+                                                      title="Baixar PDF do Cloudflare"
+                                                      onClick={(e) => e.stopPropagation()}
+                                                  >
+                                                      <Download size={14} /> <span className="text-[10px]">PDF</span>
+                                                  </a>
+                                              )}
+                                              {isUserAdmin && (
+                                                  <DeleteConfirmButton onDelete={() => onDeleteHistory(h.id)} />
+                                              )}
+                                          </div>
+                                      </div>
+                                  ))}
               </div>
           </div>,
           document.body
@@ -434,6 +462,7 @@ export function App() {
   const [filterEngineer, setFilterEngineer] = useState('');
   const [filterDate, setFilterDate] = useState('');
   const [filterLaudoStatus, setFilterLaudoStatus] = useState<'all' | 'issued' | 'pending'>('all');
+  const [filterProtocolNumber, setFilterProtocolNumber] = useState('');
 
   // Fetch Data from Supabase
   useEffect(() => {
@@ -1008,6 +1037,28 @@ export function App() {
               return;
           }
 
+          // 1. Find all history entries for this protocol to get PDF URLs for storage cleanup
+          const historyToDelete = laudoHistory.filter(h => h.protocol_id === protocolToDelete);
+          const filesToRemove = historyToDelete
+              .map(h => h.pdf_url?.split('/').pop())
+              .filter((name): name is string => !!name);
+
+          if (filesToRemove.length > 0) {
+              try {
+                  const deleteResponse = await fetch('/api/storage', {
+                      method: 'DELETE',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ fileNames: filesToRemove }),
+                  });
+                  if (!deleteResponse.ok) {
+                      console.warn("Aviso: Erro ao remover arquivos do Storage durante exclusão de protocolo");
+                  }
+              } catch (storageErr) {
+                  console.warn("Aviso: Falha na comunicação para remover arquivos do Storage:", storageErr);
+              }
+          }
+
+          // 2. Delete protocol (cascades to history in DB)
           const { error } = await supabase
               .from('protocols')
               .delete()
@@ -1245,24 +1296,113 @@ export function App() {
     setIsLoading(true);
     try {
         const mapImg = await captureMap();
+        // 1. Download localmente
         await generateLaudoPDF({ ...formData, id_laudo: idLaudo }, selectedEngineer, 'save', mapImg || undefined, isSpecificLocation);
         
-        // Register History
+        // 2. Gerar blob para upload
+        const pdfBlob = await generateLaudoPDF({ ...formData, id_laudo: idLaudo }, selectedEngineer, 'blob', mapImg || undefined, isSpecificLocation) as Blob;
+        
+        let pdfUrl = '';
+        const fileName = `${Date.now()}_${getLaudoFilename(formData)}`;
+
+        if (pdfBlob) {
+            console.log("Iniciando upload para Cloudflare R2...");
+            // Upload to Cloudflare R2 via our new API
+            const formDataUpload = new FormData();
+            formDataUpload.append('file', pdfBlob, fileName);
+            formDataUpload.append('fileName', fileName);
+
+            try {
+                const uploadResponse = await fetch('/api/upload', {
+                    method: 'POST',
+                    body: formDataUpload,
+                });
+                
+                if (uploadResponse.ok) {
+                    const uploadData = await uploadResponse.json();
+                    pdfUrl = uploadData.url;
+                    console.log("Upload concluído com sucesso. URL:", pdfUrl);
+                } else {
+                    const errorData = await uploadResponse.json();
+                    console.error("Erro no servidor ao fazer upload para o R2:", errorData);
+                    alert(`Aviso: O laudo foi baixado no seu PC, mas não pôde ser salvo na nuvem. Erro: ${errorData.error || 'Desconhecido'}`);
+                }
+            } catch (uploadErr) {
+                console.error("Falha de rede ao tentar upload:", uploadErr);
+                alert("Aviso: Falha de conexão ao tentar salvar o laudo na nuvem.");
+            }
+        }
+
+        // 3. Enviar E-mail (Sempre envia para a instituição)
+        if (pdfBlob) {
+            console.log("Iniciando envio de e-mail...");
+            try {
+                // Convert blob to base64 for the email attachment
+                const reader = new FileReader();
+                const base64Promise = new Promise<string>((resolve) => {
+                    reader.onloadend = () => {
+                        const base64String = (reader.result as string).split(',')[1];
+                        resolve(base64String);
+                    };
+                });
+                reader.readAsDataURL(pdfBlob);
+                const base64Content = await base64Promise;
+
+                const emailResponse = await fetch('/api/send-email', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        subject: `Laudo Técnico de Imóvel - Protocolo ${formData.protocolo}`,
+                        html: `
+                            <div style="font-family: sans-serif; color: #1e3a8a;">
+                                <h2 style="color: #1e3a8a;">Defesa Civil do Paraná</h2>
+                                <p>Informamos que o laudo técnico referente à vistoria do imóvel localizado em <strong>${formData.municipio}</strong> foi gerado com sucesso.</p>
+                                <p><strong>Protocolo:</strong> ${formData.protocolo}</p>
+                                <p><strong>Requerente:</strong> ${formData.requerente}</p>
+                                <p>O documento oficial segue em anexo a este e-mail para sua conferência.</p>
+                                <br/>
+                                <p style="font-size: 12px; color: #6b7280;">Este é um e-mail automático do sistema de Laudos Técnicos.</p>
+                            </div>
+                        `,
+                        fileName: fileName,
+                        fileBufferBase64: base64Content
+                    }),
+                });
+                
+                if (emailResponse.ok) {
+                    console.log("E-mail enviado com sucesso.");
+                } else {
+                    const contentType = emailResponse.headers.get("content-type");
+                    if (contentType && contentType.indexOf("application/json") !== -1) {
+                        const emailError = await emailResponse.json();
+                        console.warn("Erro no servidor de e-mail:", emailError);
+                    } else {
+                        const errorText = await emailResponse.text();
+                        console.warn("Erro não-JSON no servidor de e-mail:", errorText.substring(0, 200));
+                    }
+                }
+            } catch (emailErr) {
+                console.error("Falha de rede ao tentar enviar e-mail:", emailErr);
+            }
+        }
+
+        // Registrar Histórico
         if (formData.protocolo) {
-            // Find protocol ID by numeroProtocolo
+            // Encontrar ID do protocolo pelo numeroProtocolo
             const protocol = protocols.find(p => p.numeroProtocolo === formData.protocolo);
             if (protocol) {
                 const historyEntry = {
                     protocol_id: protocol.id,
                     engineer_id: selectedEngineer.id,
                     engineer_name: selectedEngineer.name,
-                    created_at: new Date().toISOString()
+                    created_at: new Date().toISOString(),
+                    pdf_url: pdfUrl
                 };
 
-                const { error } = await supabase.from('laudo_history').insert(historyEntry);
-                if (!error) {
-                    // Optimistic update
-                    setLaudoHistory(prev => [...prev, { ...historyEntry, id: crypto.randomUUID() }]);
+                const { data: insertedData, error } = await supabase.from('laudo_history').insert(historyEntry).select();
+                if (!error && insertedData) {
+                    // Atualização otimista
+                    setLaudoHistory(prev => [...prev, insertedData[0]]);
                 }
             }
         }
@@ -1430,9 +1570,36 @@ export function App() {
   }
 
   const handleDeleteHistory = async (historyId: string) => {
+      const entry = laudoHistory.find(h => h.id === historyId);
+      if (!entry) return;
+
       console.log("Executing delete for history:", historyId);
       
       try {
+          // 1. Delete from Storage if URL exists
+          if (entry.pdf_url) {
+              // Extract filename from public URL
+              // URL format: .../storage/v1/object/public/laudos/filename.pdf
+              const urlParts = entry.pdf_url.split('/');
+              const fileName = urlParts[urlParts.length - 1];
+              
+              if (fileName) {
+                  try {
+                      const deleteResponse = await fetch('/api/storage', {
+                          method: 'DELETE',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ fileNames: [fileName] }),
+                      });
+                      if (!deleteResponse.ok) {
+                          console.warn("Aviso: Erro ao remover arquivo do Storage via API");
+                      }
+                  } catch (storageErr) {
+                      console.warn("Aviso: Falha na comunicação para remover arquivo do Storage:", storageErr);
+                  }
+              }
+          }
+
+          // 2. Delete from Database
           const { error } = await supabase.from('laudo_history').delete().eq('id', historyId);
           if (error) throw error;
           
@@ -1453,13 +1620,14 @@ export function App() {
           const matchCity = !filterCity || p.municipio === filterCity;
           const matchDate = !filterDate || p.data === filterDate;
           const matchEngineer = !filterEngineer || p.distributedToId === filterEngineer;
+          const matchProtocol = !filterProtocolNumber || (p.numeroProtocolo && p.numeroProtocolo.toLowerCase().includes(filterProtocolNumber.toLowerCase()));
           
           const hasLaudo = laudoHistory.some(h => h.protocol_id === p.id);
           const matchStatus = filterLaudoStatus === 'all' || 
                              (filterLaudoStatus === 'issued' && hasLaudo) || 
                              (filterLaudoStatus === 'pending' && !hasLaudo);
 
-          return matchCity && matchDate && matchEngineer && matchStatus;
+          return matchCity && matchDate && matchEngineer && matchStatus && matchProtocol;
       });
 
       return (
@@ -1478,7 +1646,17 @@ export function App() {
           </div>
 
           {/* Filters Section */}
-          <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 grid grid-cols-1 md:grid-cols-5 gap-4">
+              <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Filtrar por Protocolo</label>
+                  <input 
+                      type="text" 
+                      className={inputClass()} 
+                      placeholder="Nº Protocolo..." 
+                      value={filterProtocolNumber} 
+                      onChange={e => setFilterProtocolNumber(e.target.value)} 
+                  />
+              </div>
               <div>
                   <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Filtrar por Município</label>
                   <select className={inputClass()} value={filterCity || ''} onChange={e => setFilterCity(e.target.value)}>
@@ -1533,6 +1711,7 @@ export function App() {
                                   <th className="p-4 font-bold">Município</th>
                                   <th className="p-4 font-bold">Requerente</th>
                                   <th className="p-4 font-bold">Distribuído Para</th>
+                                  <th className="p-4 font-bold text-center">Status</th>
                                   <th className="p-4 font-bold text-center">Ações</th>
                               </tr>
                           </thead>
@@ -1549,6 +1728,17 @@ export function App() {
                                       <td className="p-4 text-sm">{p.requerente}</td>
                                       <td className="p-4 text-sm">
                                           {p.distributedToId ? (engineers.find(e => e.id === p.distributedToId)?.name || 'N/A') : <span className="text-gray-400 italic">Pendente</span>}
+                                      </td>
+                                      <td className="p-4 text-center">
+                                          {hasHistory ? (
+                                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 border border-green-200">
+                                                  Emitido
+                                              </span>
+                                          ) : (
+                                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600 border border-gray-200">
+                                                  Pendente
+                                              </span>
+                                          )}
                                       </td>
                                       <td className="p-4">
                                           <div className="flex items-center justify-center gap-2 relative">
@@ -2105,7 +2295,7 @@ export function App() {
                <div className={`mt-6 border-t border-gray-200 pt-6 transition-all duration-300 ${!isCitySelected ? "opacity-50 pointer-events-none" : ""}`}>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div>
-                            <h3 className="font-bold text-blue-900 uppercase mb-4 flex items-center gap-2"><User className="text-orange-500"/> <LabelWithAsterisk>Distribuído Para</LabelWithAsterisk></h3>
+                            <h3 className="font-bold text-blue-900 uppercase mb-4 flex items-center gap-2"><User className="text-orange-500"/> <label className={labelClass}>Distribuído Para</label></h3>
                             <select 
                                 className={inputClass(formErrors.distributedToId)}
                                 value={protocolForm.distributedToId || ''}

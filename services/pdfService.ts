@@ -100,10 +100,10 @@ const drawFooter = (doc: jsPDF, pageNumber: number, totalPages: number, pageWidt
 export const generateLaudoPDF = async (
   data: LaudoForm, 
   selectedEngineer: Engineer,
-  mode: 'save' | 'preview' = 'save',
+  mode: 'save' | 'preview' | 'blob' = 'save',
   mapImage?: string,
   showPin: boolean = true
-): Promise<string | void> => {
+): Promise<string | Blob | void> => {
   const doc = new jsPDF('p', 'mm', 'a4');
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
@@ -317,7 +317,15 @@ export const generateLaudoPDF = async (
     const cleanText = (text: string) => text.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().replace(/[^A-Z0-9]+/g, '-').replace(/^-+|-+$/g, '');
     const formatDateForFilename = (dateStr: string) => { const p = dateStr.split('-'); return p.length === 3 ? `${p[2]}${p[1]}${p[0]}` : dateStr.replace(/[^0-9]/g, ''); };
     doc.save(`${cleanText(data.protocolo || 'SEM-PROTOCOLO')}_${cleanText(data.municipio)}_${cleanText(data.requerente || 'NAO-INFORMADO')}_${formatDateForFilename(data.data)}.pdf`);
+  } else if (mode === 'blob') {
+    return doc.output('blob');
   } else {
     return URL.createObjectURL(doc.output('blob'));
   }
+};
+
+export const getLaudoFilename = (data: LaudoForm): string => {
+  const cleanText = (text: string) => text.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().replace(/[^A-Z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+  const formatDateForFilename = (dateStr: string) => { const p = dateStr.split('-'); return p.length === 3 ? `${p[2]}${p[1]}${p[0]}` : dateStr.replace(/[^0-9]/g, ''); };
+  return `${cleanText(data.protocolo || 'SEM-PROTOCOLO')}_${cleanText(data.municipio)}_${cleanText(data.requerente || 'NAO-INFORMADO')}_${formatDateForFilename(data.data)}.pdf`;
 };

@@ -103,6 +103,7 @@ export interface LaudoHistory {
   engineer_id: string;
   engineer_name: string;
   created_at: string;
+  pdf_url?: string;
 }
 
 export interface LaudoForm {
@@ -131,7 +132,7 @@ export interface LaudoForm {
   proprietario: string;
   requerente: string;
   cpfRequerente: string; 
-  telefoneRequerente?: string; // Added field
+  telefoneRequerente?: string; 
 
   endereco: string;
   bairro: string;
