@@ -26,8 +26,13 @@ const s3Client = new S3Client({
     accessKeyId: process.env.CLOUDFLARE_ACCESS_KEY_ID || "",
     secretAccessKey: process.env.CLOUDFLARE_SECRET_ACCESS_KEY || "",
   },
-  forcePathStyle: true, // Required for some S3-compatible providers like R2
+  forcePathStyle: false,
 });
+
+// Verify R2 Config on startup
+if (!process.env.CLOUDFLARE_ACCOUNT_ID || !process.env.CLOUDFLARE_ACCESS_KEY_ID || !process.env.CLOUDFLARE_SECRET_ACCESS_KEY) {
+  console.warn("AVISO: Configurações do Cloudflare R2 incompletas no .env");
+}
 
 // Resend Client
 const resend = new Resend(process.env.RESEND_API_KEY);
@@ -36,6 +41,11 @@ const resend = new Resend(process.env.RESEND_API_KEY);
 app.post("/api/upload", upload.single("file"), async (req, res) => {
   try {
     console.log("Recebendo pedido de upload...");
+    
+    if (!process.env.CLOUDFLARE_ACCOUNT_ID) {
+        throw new Error("CLOUDFLARE_ACCOUNT_ID não configurado no servidor");
+    }
+
     if (!req.file) {
       console.error("Erro: Nenhum arquivo no request");
       return res.status(400).json({ error: "Nenhum arquivo enviado" });
@@ -45,6 +55,7 @@ app.post("/api/upload", upload.single("file"), async (req, res) => {
     const bucketName = process.env.CLOUDFLARE_BUCKET_NAME || "laudosdefesacivil";
 
     console.log(`Fazendo upload de ${fileName} para o bucket ${bucketName}...`);
+    console.log(`Endpoint: https://${process.env.CLOUDFLARE_ACCOUNT_ID}.r2.cloudflarestorage.com`);
 
     const command = new PutObjectCommand({
       Bucket: bucketName,
@@ -64,6 +75,7 @@ app.post("/api/upload", upload.single("file"), async (req, res) => {
   } catch (error: any) {
     console.error("Erro CRÍTICO no upload R2:", {
       message: error.message,
+      stack: error.stack,
       code: error.code,
       requestId: error.$metadata?.requestId,
       bucket: process.env.CLOUDFLARE_BUCKET_NAME || "laudosdefesacivil"

@@ -349,18 +349,6 @@ const HistoryButton = ({
                 {history.length}
             </button>
         )}
-        {hasHistory && history[history.length - 1].pdf_url && (
-            <a 
-                href={history[history.length - 1].pdf_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="bg-green-800 text-white px-2 py-1.5 hover:bg-green-900 transition-colors border-l border-green-900 flex items-center justify-center"
-                title="Baixar Último Laudo Emitido"
-                onClick={(e) => e.stopPropagation()}
-            >
-                <Download size={14}/>
-            </a>
-        )}
       </div>
 
       {hasHistory && isOpen && createPortal(
@@ -1386,7 +1374,7 @@ export function App() {
             }
         }
 
-        // Registrar Histórico
+        // Registrar Histórico (Apenas se o upload funcionou ou se não era necessário)
         if (formData.protocolo) {
             // Encontrar ID do protocolo pelo numeroProtocolo
             const protocol = protocols.find(p => p.numeroProtocolo === formData.protocolo);
@@ -1396,13 +1384,15 @@ export function App() {
                     engineer_id: selectedEngineer.id,
                     engineer_name: selectedEngineer.name,
                     created_at: new Date().toISOString(),
-                    pdf_url: pdfUrl
+                    pdf_url: pdfUrl || undefined // Only save if we have a URL
                 };
 
                 const { data: insertedData, error } = await supabase.from('laudo_history').insert(historyEntry).select();
                 if (!error && insertedData) {
                     // Atualização otimista
                     setLaudoHistory(prev => [...prev, insertedData[0]]);
+                } else if (error) {
+                    console.error("Erro ao salvar histórico no Supabase:", error);
                 }
             }
         }
@@ -1759,6 +1749,19 @@ export function App() {
                                                   onStartLaudo={startLaudoFromProtocol}
                                                   onDeleteHistory={handleDeleteHistory}
                                               />
+
+                                              {history.length > 0 && history[history.length - 1].pdf_url && (
+                                                  <a 
+                                                      href={history[history.length - 1].pdf_url}
+                                                      target="_blank"
+                                                      rel="noopener noreferrer"
+                                                      className="p-2 text-green-700 hover:bg-green-100 rounded transition-colors"
+                                                      title="Baixar Último Laudo Emitido"
+                                                      onClick={(e) => e.stopPropagation()}
+                                                  >
+                                                      <Download size={16}/>
+                                                  </a>
+                                              )}
 
                                               <button type="button" onClick={() => handleDeleteProtocol(p.id)} className="p-2 text-red-600 hover:bg-red-100 rounded" title="Excluir"><Trash2 size={16}/></button>
                                           </div>
