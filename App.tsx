@@ -975,8 +975,8 @@ export function App() {
           zoom: mapState.zoom,
           descricaoNivelDestruicao: protocolForm.descricaoNivelDestruicao,
           percentualDestruicao: protocolForm.percentualDestruicao,
-          engineerId: protocolForm.engineerId,
-          distributedToId: protocolForm.distributedToId
+          engineerId: protocolForm.engineerId || null,
+          distributedToId: protocolForm.distributedToId || null
       };
 
       try {
