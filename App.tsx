@@ -1301,7 +1301,7 @@ export function App() {
             formDataUpload.append('fileName', fileName);
 
             try {
-                const uploadResponse = await fetch(`${window.location.origin}/api/upload`, {
+                const uploadResponse = await fetch('/api/upload', {
                     method: 'POST',
                     body: formDataUpload,
                 });
@@ -1317,7 +1317,7 @@ export function App() {
                 }
             } catch (uploadErr) {
                 console.error("Falha de rede ao tentar upload:", uploadErr);
-                alert("Aviso: Falha de conexão ao tentar salvar o laudo na nuvem.");
+                alert(`Aviso: Falha de conexão ao tentar salvar o laudo na nuvem. Detalhes: ${uploadErr instanceof Error ? uploadErr.message : String(uploadErr)}`);
             }
         }
 
@@ -1335,7 +1335,7 @@ export function App() {
                     reader.readAsDataURL(pdfBlob);
                 });
 
-                const emailResponse = await fetch(`${window.location.origin}/api/send-email`, {
+                const emailResponse = await fetch('/api/send-email', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({

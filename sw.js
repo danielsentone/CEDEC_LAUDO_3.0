@@ -1,5 +1,5 @@
-const CACHE_NAME = 'defesa-civil-pr-v2';
-const TILES_CACHE_NAME = 'defesa-civil-tiles-v2';
+const CACHE_NAME = 'defesa-civil-pr-v3';
+const TILES_CACHE_NAME = 'defesa-civil-tiles-v3';
 
 // Assets fundamentais da aplicação
 const ASSETS_TO_CACHE = [
@@ -23,7 +23,6 @@ self.addEventListener('install', (event) => {
   self.skipWaiting();
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      // Tenta cachear, mas não falha se alguns recursos externos (como esm.sh) falharem inicialmente
       return cache.addAll(ASSETS_TO_CACHE).catch(err => console.warn('Falha parcial no cache inicial', err));
     })
   );
@@ -46,23 +45,20 @@ self.addEventListener('activate', (event) => {
 
 // Interceptação de Requisições
 self.addEventListener('fetch', (event) => {
-  // Ignora requisições que não sejam GET (ex: POST de API, Uploads)
-  // O Cache API só suporta GET.
-  if (event.request.method !== 'GET') return;
-
-  // SEGURANÇA: Ignora requisições que não sejam HTTP/HTTPS
-  if (!event.request.url.startsWith('http')) return;
-
-  // Ignora requisições para o Supabase no Service Worker para evitar interferência
-  if (event.request.url.includes('.supabase.co')) return;
-
-  // Ignora requisições para a API local para evitar problemas com POST e uploads grandes
-  if (event.request.url.includes('/api/')) return;
-
   const url = new URL(event.request.url);
 
-  // 1. Estratégia para Tiles de Mapa (Cache First, falling back to Network)
-  // Identifica URLs do Google Maps ou OpenStreetMap ou ArcGIS
+  // 1. IGNORAR REQUISIÇÕES NÃO-GET (Cache API só suporta GET)
+  if (event.request.method !== 'GET') return;
+
+  // 2. IGNORAR API E SUPABASE (Deixar passar para a rede)
+  if (url.pathname.startsWith('/api/') || url.hostname.includes('supabase.co')) {
+    return;
+  }
+
+  // 3. IGNORAR PROTOCOLOS NÃO-HTTP (ex: chrome-extension, data, blob)
+  if (!url.protocol.startsWith('http')) return;
+
+  // 4. Estratégia para Tiles de Mapa (Cache First)
   if (url.href.includes('tile.openstreetmap.org') || 
       url.href.includes('mt1.google.com') || 
       url.href.includes('server.arcgisonline.com')) {
@@ -70,19 +66,14 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(
       caches.open(TILES_CACHE_NAME).then((cache) => {
         return cache.match(event.request).then((response) => {
-          if (response) return response; // Retorna do cache se existir
+          if (response) return response;
 
-          // Se não, busca na rede, coloca no cache e retorna
           return fetch(event.request).then((networkResponse) => {
-            // Se a resposta for válida (mesmo que opaca type 0), cacheia
-            // Status 200 = OK (CORS)
-            // Status 0 = Opaque (NO-CORS) - Comum para tiles sem cabeçalho CORS explícito ou fallback
             if (networkResponse && (networkResponse.status === 200 || networkResponse.status === 0)) {
                 cache.put(event.request, networkResponse.clone());
             }
             return networkResponse;
           }).catch(() => {
-             // Se falhar (offline e sem cache), retorna nada (tile quebrada, mas não trava app)
              return new Response('', { status: 408, statusText: 'Offline tile missing' });
           });
         });
@@ -91,7 +82,7 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // 2. Estratégia para ESM.SH e bibliotecas externas (Cache First)
+  // 5. Estratégia para ESM.SH e bibliotecas externas (Cache First)
   if (url.hostname === 'esm.sh' || url.hostname === 'cdn.tailwindcss.com' || url.hostname === 'unpkg.com') {
       event.respondWith(
         caches.match(event.request).then((response) => {
@@ -106,11 +97,9 @@ self.addEventListener('fetch', (event) => {
       return;
   }
 
-  // 3. Estratégia para a Aplicação (Network First, falling back to Cache)
-  // Isso garante que o usuário sempre receba a versão mais nova do código se estiver online
+  // 6. Estratégia para a Aplicação (Network First)
   event.respondWith(
     fetch(event.request).then((response) => {
-      // Se a resposta for válida, atualiza o cache
       if (!response || response.status !== 200 || response.type !== 'basic') {
         return response;
       }
@@ -120,7 +109,6 @@ self.addEventListener('fetch', (event) => {
       });
       return response;
     }).catch(() => {
-      // Se estiver offline, tenta servir do cache
       return caches.match(event.request);
     })
   );
