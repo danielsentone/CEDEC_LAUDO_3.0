@@ -12,11 +12,14 @@ const app = express();
 const PORT = 3000;
 
 app.use(cors());
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ limit: '50mb', extended: true }));
+app.use(express.json({ limit: '100mb' }));
+app.use(express.urlencoded({ limit: '100mb', extended: true }));
 
-// Multer for file uploads
-const upload = multer({ storage: multer.memoryStorage() });
+// Multer for file uploads with increased limits
+const upload = multer({ 
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 100 * 1024 * 1024 } // 100MB
+});
 
 // R2 Client
 const s3Client = new S3Client({
@@ -135,6 +138,11 @@ app.post("/api/send-email", async (req, res) => {
     }
 
     console.log(`Enviando para: ${institutionalEmail}`);
+
+    if (!process.env.RESEND_API_KEY) {
+      console.error("Erro: RESEND_API_KEY não configurado");
+      return res.status(500).json({ error: "Serviço de e-mail não configurado no servidor (API Key ausente)" });
+    }
 
     const { data, error } = await resend.emails.send({
       from: process.env.EMAIL_FROM || "onboarding@resend.dev",

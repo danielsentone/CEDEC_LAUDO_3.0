@@ -1325,16 +1325,15 @@ export function App() {
         if (pdfBlob) {
             console.log("Iniciando envio de e-mail...");
             try {
-                // Convert blob to base64 for the email attachment
-                const reader = new FileReader();
-                const base64Promise = new Promise<string>((resolve) => {
+                const base64Content = await new Promise<string>((resolve, reject) => {
+                    const reader = new FileReader();
                     reader.onloadend = () => {
                         const base64String = (reader.result as string).split(',')[1];
                         resolve(base64String);
                     };
+                    reader.onerror = reject;
+                    reader.readAsDataURL(pdfBlob);
                 });
-                reader.readAsDataURL(pdfBlob);
-                const base64Content = await base64Promise;
 
                 const emailResponse = await fetch('/api/send-email', {
                     method: 'POST',
