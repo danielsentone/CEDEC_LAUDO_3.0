@@ -1,5 +1,5 @@
-const CACHE_NAME = 'defesa-civil-pr-v1';
-const TILES_CACHE_NAME = 'defesa-civil-tiles-v1';
+const CACHE_NAME = 'defesa-civil-pr-v2';
+const TILES_CACHE_NAME = 'defesa-civil-tiles-v2';
 
 // Assets fundamentais da aplicação
 const ASSETS_TO_CACHE = [
@@ -46,12 +46,18 @@ self.addEventListener('activate', (event) => {
 
 // Interceptação de Requisições
 self.addEventListener('fetch', (event) => {
-  // SEGURANÇA: Ignora requisições que não sejam HTTP/HTTPS (ex: chrome-extension, data, blob)
-  // Isso evita o erro "Failed to construct 'URL': Invalid URL"
+  // Ignora requisições que não sejam GET (ex: POST de API, Uploads)
+  // O Cache API só suporta GET.
+  if (event.request.method !== 'GET') return;
+
+  // SEGURANÇA: Ignora requisições que não sejam HTTP/HTTPS
   if (!event.request.url.startsWith('http')) return;
 
   // Ignora requisições para o Supabase no Service Worker para evitar interferência
   if (event.request.url.includes('.supabase.co')) return;
+
+  // Ignora requisições para a API local para evitar problemas com POST e uploads grandes
+  if (event.request.url.includes('/api/')) return;
 
   const url = new URL(event.request.url);
 

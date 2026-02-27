@@ -1301,7 +1301,7 @@ export function App() {
             formDataUpload.append('fileName', fileName);
 
             try {
-                const uploadResponse = await fetch('/api/upload', {
+                const uploadResponse = await fetch(`${window.location.origin}/api/upload`, {
                     method: 'POST',
                     body: formDataUpload,
                 });
@@ -1335,7 +1335,7 @@ export function App() {
                     reader.readAsDataURL(pdfBlob);
                 });
 
-                const emailResponse = await fetch('/api/send-email', {
+                const emailResponse = await fetch(`${window.location.origin}/api/send-email`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
