@@ -95,6 +95,7 @@ export interface Protocolo {
   
   engineerId: string; // Quem cadastrou
   distributedToId?: string; // NOVO: Para quem foi distribuído
+  created_at?: string; // NOVO: Data de inclusão no banco
 }
 
 export interface LaudoHistory {

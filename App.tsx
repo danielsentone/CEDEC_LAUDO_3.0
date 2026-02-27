@@ -991,7 +991,7 @@ export function App() {
               setProtocols(prev => {
                   const exists = prev.find(p => p.id === newProtocol.id);
                   if (exists) return prev.map(p => p.id === newProtocol.id ? newProtocol : p);
-                  return [...prev, newProtocol];
+                  return [...prev, { ...newProtocol, created_at: new Date().toISOString() }];
               });
               alert("Protocolo salvo com sucesso!");
               setCurrentView('protocolList');
@@ -1618,6 +1618,10 @@ export function App() {
                              (filterLaudoStatus === 'pending' && !hasLaudo);
 
           return matchCity && matchDate && matchEngineer && matchStatus && matchProtocol;
+      }).sort((a, b) => {
+          const dateA = a.created_at ? new Date(a.created_at).getTime() : new Date(a.data).getTime();
+          const dateB = b.created_at ? new Date(b.created_at).getTime() : new Date(b.data).getTime();
+          return dateB - dateA;
       });
 
       return (
@@ -1749,19 +1753,6 @@ export function App() {
                                                   onStartLaudo={startLaudoFromProtocol}
                                                   onDeleteHistory={handleDeleteHistory}
                                               />
-
-                                              {history.length > 0 && history[history.length - 1].pdf_url && (
-                                                  <a 
-                                                      href={history[history.length - 1].pdf_url}
-                                                      target="_blank"
-                                                      rel="noopener noreferrer"
-                                                      className="p-2 text-green-700 hover:bg-green-100 rounded transition-colors"
-                                                      title="Baixar Último Laudo Emitido"
-                                                      onClick={(e) => e.stopPropagation()}
-                                                  >
-                                                      <Download size={16}/>
-                                                  </a>
-                                              )}
 
                                               <button type="button" onClick={() => handleDeleteProtocol(p.id)} className="p-2 text-red-600 hover:bg-red-100 rounded" title="Excluir"><Trash2 size={16}/></button>
                                           </div>
