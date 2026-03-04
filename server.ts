@@ -6,6 +6,9 @@ import multer from "multer";
 import { S3Client, PutObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
 import { Resend } from "resend";
 
+import fs from "fs";
+import path from "path";
+
 dotenv.config();
 
 // Multer for file uploads with increased limits
@@ -196,19 +199,26 @@ apiRouter.post("/send-email", async (req, res) => {
 
 app.use("/api", apiRouter);
 
+export default app;
+
 // Verify R2 Config on startup
 if (!process.env.CLOUDFLARE_ACCOUNT_ID || !process.env.CLOUDFLARE_ACCESS_KEY_ID || !process.env.CLOUDFLARE_SECRET_ACCESS_KEY) {
   console.warn("AVISO: Configurações do Cloudflare R2 incompletas no .env");
 }
 
-// Vite middleware for development
-if (process.env.NODE_ENV !== "production") {
+// Vite middleware for development or fallback if dist is missing
+const isProduction = process.env.NODE_ENV === "production";
+const distExists = fs.existsSync(path.resolve("dist"));
+
+if (!isProduction || !distExists) {
+  console.log(`[SYSTEM] Usando middleware Vite (Produção: ${isProduction}, Dist existe: ${distExists})`);
   const vite = await createViteServer({
     server: { middlewareMode: true },
     appType: "spa",
   });
   app.use(vite.middlewares);
 } else {
+  console.log("[SYSTEM] Servindo arquivos estáticos da pasta 'dist'");
   app.use(express.static("dist"));
   app.get("*", (req, res) => {
     res.sendFile("dist/index.html", { root: "." });

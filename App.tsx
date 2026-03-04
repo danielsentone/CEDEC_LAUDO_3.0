@@ -1300,14 +1300,26 @@ export function App() {
     try {
         const mapImg = await captureMap();
         
-        // 1. Gerar blob para upload, download e e-mail (Geramos apenas UMA vez para eficiência)
+        // 1. Gerar blob para upload, download e e-mail
         const pdfBlob = await generateLaudoPDF({ ...formData, id_laudo: idLaudo }, selectedEngineer, 'blob', mapImg || undefined, isSpecificLocation) as Blob;
         
         if (!pdfBlob) {
             throw new Error("Falha ao gerar o arquivo PDF.");
         }
 
-        // 2. Download local imediato para garantir que o usuário tenha o arquivo
+        // 2. Converter para Base64 IMEDIATAMENTE (Método Binário Direto - Mais Robusto)
+        console.log("[SISTEMA] Processando PDF em memória...");
+        const arrayBuffer = await pdfBlob.arrayBuffer();
+        const bytes = new Uint8Array(arrayBuffer);
+        let binary = '';
+        const len = bytes.byteLength;
+        for (let i = 0; i < len; i++) {
+            binary += String.fromCharCode(bytes[i]);
+        }
+        const base64Content = btoa(binary);
+        console.log("[SISTEMA] PDF processado com sucesso. Tamanho:", base64Content.length);
+
+        // 3. Download local imediato
         const fileName = getLaudoFilename(formData);
         const downloadUrl = URL.createObjectURL(pdfBlob);
         const link = document.createElement('a');
@@ -1321,7 +1333,7 @@ export function App() {
         let pdfUrl = '';
         const uploadFileName = `${Date.now()}_${fileName}`;
 
-        // 3. Upload para Cloudflare R2
+        // 4. Upload para Cloudflare R2
         console.log("[UPLOAD] Iniciando upload para Cloudflare R2...");
         const formDataUpload = new FormData();
         formDataUpload.append('fileName', uploadFileName);
@@ -1343,74 +1355,55 @@ export function App() {
                 try {
                     const errorData = JSON.parse(errorText);
                     errorMsg = errorData.error || errorText;
-                } catch (e) {
-                    // Not JSON
-                }
+                } catch (e) { }
                 console.error("[UPLOAD] Erro no servidor:", errorMsg);
                 alert(`Aviso: O laudo foi baixado, mas não pôde ser salvo na nuvem. Erro: ${errorMsg.substring(0, 100)}`);
             }
         } catch (uploadErr) {
             console.error("[UPLOAD] Falha de rede:", uploadErr);
-            const errorMsg = uploadErr instanceof Error ? uploadErr.message : String(uploadErr);
-            alert(`Erro de Conexão (Upload): Não foi possível salvar na nuvem. Detalhes: ${errorMsg}.`);
+            alert(`Erro de Conexão (Upload): Não foi possível salvar na nuvem.`);
         }
 
-        // 4. Enviar E-mail (Sempre envia para a instituição)
-        if (pdfBlob) {
-            console.log("[EMAIL] Iniciando envio de e-mail...");
-            try {
-                // Converter Blob para Base64 usando ArrayBuffer (mais robusto)
-                console.log("[EMAIL] Convertendo PDF para Base64...");
-                const arrayBuffer = await pdfBlob.arrayBuffer();
-                const bytes = new Uint8Array(arrayBuffer);
-                let binary = '';
-                for (let i = 0; i < bytes.byteLength; i++) {
-                    binary += String.fromCharCode(bytes[i]);
-                }
-                const base64Content = btoa(binary);
-                console.log("[EMAIL] Conversão concluída. Tamanho Base64:", base64Content.length);
-
-                const emailResponse = await fetch('/api/send-email', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        subject: `Laudo Técnico de Imóvel - Protocolo ${formData.protocolo}`,
-                        html: `
-                            <div style="font-family: sans-serif; color: #1e3a8a;">
-                                <h2 style="color: #1e3a8a;">Defesa Civil do Paraná</h2>
-                                <p>Informamos que o laudo técnico referente à vistoria do imóvel localizado em <strong>${formData.municipio}</strong> foi gerado com sucesso.</p>
-                                <p><strong>Protocolo:</strong> ${formData.protocolo}</p>
-                                <p><strong>Requerente:</strong> ${formData.requerente}</p>
-                                <p>O documento oficial segue em anexo a este e-mail para sua conferência.</p>
-                                <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;" />
-                                <p style="font-size: 12px; color: #666;">Este é um e-mail automático gerado pelo Sistema de Laudos da Defesa Civil.</p>
-                            </div>
-                        `,
-                        fileName: fileName,
-                        fileBufferBase64: base64Content
-                    }),
-                });
-                
-                if (emailResponse.ok) {
-                    console.log("[EMAIL] E-mail enviado com sucesso!");
-                    alert("Sucesso! Laudo gerado, baixado e enviado por e-mail.");
-                } else {
-                    const errorText = await emailResponse.text();
-                    let errorMessage = errorText;
-                    try {
-                        const errorData = JSON.parse(errorText);
-                        errorMessage = errorData.error || errorText;
-                    } catch (e) {
-                        // Not JSON
-                    }
-                    console.error("[EMAIL] Erro no servidor:", errorMessage);
-                    alert(`Aviso: O laudo foi gerado e baixado, mas o envio do e-mail falhou. Detalhes: ${errorMessage.substring(0, 100)}`);
-                }
-            } catch (emailErr) {
-                console.error("[EMAIL] Falha ao processar e-mail:", emailErr);
-                const errorMsg = emailErr instanceof Error ? emailErr.message : String(emailErr);
-                alert(`Erro no processamento do E-mail: ${errorMsg}.`);
+        // 5. Enviar E-mail (Sempre envia para a instituição)
+        console.log("[EMAIL] Iniciando envio de e-mail...");
+        try {
+            const emailResponse = await fetch('/api/send-email', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    subject: `Laudo Técnico de Imóvel - Protocolo ${formData.protocolo}`,
+                    html: `
+                        <div style="font-family: sans-serif; color: #1e3a8a;">
+                            <h2 style="color: #1e3a8a;">Defesa Civil do Paraná</h2>
+                            <p>Informamos que o laudo técnico referente à vistoria do imóvel localizado em <strong>${formData.municipio}</strong> foi gerado com sucesso.</p>
+                            <p><strong>Protocolo:</strong> ${formData.protocolo}</p>
+                            <p><strong>Requerente:</strong> ${formData.requerente}</p>
+                            <p>O documento oficial segue em anexo a este e-mail para sua conferência.</p>
+                            <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;" />
+                            <p style="font-size: 12px; color: #666;">Este é um e-mail automático gerado pelo Sistema de Laudos da Defesa Civil.</p>
+                        </div>
+                    `,
+                    fileName: fileName,
+                    fileBufferBase64: base64Content
+                }),
+            });
+            
+            if (emailResponse.ok) {
+                console.log("[EMAIL] E-mail enviado com sucesso!");
+                alert("Sucesso! Laudo gerado, baixado e enviado por e-mail.");
+            } else {
+                const errorText = await emailResponse.text();
+                let errorMessage = errorText;
+                try {
+                    const errorData = JSON.parse(errorText);
+                    errorMessage = errorData.error || errorText;
+                } catch (e) { }
+                console.error("[EMAIL] Erro no servidor:", errorMessage);
+                alert(`Aviso: O laudo foi gerado e baixado, mas o envio do e-mail falhou. Detalhes: ${errorMessage.substring(0, 100)}`);
             }
+        } catch (emailErr) {
+            console.error("[EMAIL] Falha ao processar e-mail:", emailErr);
+            alert(`Erro no processamento do E-mail. Verifique sua conexão.`);
         }
 
         // Registrar Histórico (Apenas se o upload funcionou ou se não era necessário)
@@ -2760,7 +2753,7 @@ export function App() {
                     </div>
                 </form>
                 <div className="p-4 bg-gray-50 border-t border-gray-100 flex justify-between items-center text-[10px] text-gray-400 font-bold uppercase tracking-widest">
-                    <span>Versão 2.3 (Final)</span>
+                    <span>Versão 2.5 (Final)</span>
                     <button 
                         type="button"
                         onClick={() => {
