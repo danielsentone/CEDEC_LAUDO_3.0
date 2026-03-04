@@ -1,233 +1,241 @@
 import express from "express";
-import { createServer as createViteServer } from "vite";
 import cors from "cors";
 import dotenv from "dotenv";
 import multer from "multer";
 import { S3Client, PutObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
 import { Resend } from "resend";
-
 import fs from "fs";
 import path from "path";
 
 dotenv.config();
 
-// Multer for file uploads with increased limits
-const upload = multer({ 
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 100 * 1024 * 1024 } // 100MB
-});
-
-// R2 Client
-const s3Client = new S3Client({
-  region: "auto",
-  endpoint: `https://${process.env.CLOUDFLARE_ACCOUNT_ID}.r2.cloudflarestorage.com`,
-  credentials: {
-    accessKeyId: process.env.CLOUDFLARE_ACCESS_KEY_ID || "",
-    secretAccessKey: process.env.CLOUDFLARE_SECRET_ACCESS_KEY || "",
-  },
-  forcePathStyle: false,
-});
-
-// Resend Client
-const resend = new Resend(process.env.RESEND_API_KEY);
-
-const app = express();
-const PORT = 3000;
-
-// Global request logger for debugging
-app.use((req, res, next) => {
-  console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
-  next();
-});
-
-app.use(cors({
-  origin: true,
-  credentials: true
-}));
-app.use(express.json({ limit: '100mb' }));
-app.use(express.urlencoded({ limit: '100mb', extended: true }));
-
-// API Routes
-const apiRouter = express.Router();
-
-apiRouter.get("/health", (req, res) => {
-  res.json({ 
-    status: "ok", 
-    env: {
-      r2: !!process.env.CLOUDFLARE_ACCOUNT_ID,
-      resend: !!process.env.RESEND_API_KEY,
-      email: !!process.env.EMAIL_TO_INSTITUTIONAL
-    }
+async function startServer() {
+  // Multer for file uploads with increased limits
+  const upload = multer({ 
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 100 * 1024 * 1024 } // 100MB
   });
-});
 
-apiRouter.post("/upload", upload.single("file"), async (req, res) => {
-  try {
-    console.log("[UPLOAD] Recebendo pedido de upload...");
-    
-    if (!process.env.CLOUDFLARE_ACCOUNT_ID) {
-        throw new Error("CLOUDFLARE_ACCOUNT_ID não configurado no servidor");
-    }
+  // R2 Client
+  const s3Client = new S3Client({
+    region: "auto",
+    endpoint: `https://${process.env.CLOUDFLARE_ACCOUNT_ID}.r2.cloudflarestorage.com`,
+    credentials: {
+      accessKeyId: process.env.CLOUDFLARE_ACCESS_KEY_ID || "",
+      secretAccessKey: process.env.CLOUDFLARE_SECRET_ACCESS_KEY || "",
+    },
+    forcePathStyle: false,
+  });
 
-    if (!req.file) {
-      console.error("[UPLOAD] Erro: Nenhum arquivo no request");
-      return res.status(400).json({ error: "Nenhum arquivo enviado" });
-    }
+  // Resend Client
+  const resend = new Resend(process.env.RESEND_API_KEY);
 
-    const fileName = req.body.fileName || `${Date.now()}-${req.file.originalname}`;
-    const bucketName = process.env.CLOUDFLARE_BUCKET_NAME || "laudosdefesacivil";
+  const app = express();
+  const PORT = 3000;
 
-    console.log(`[UPLOAD] Iniciando upload de ${fileName} para o bucket ${bucketName}...`);
-    console.log(`[UPLOAD] Endpoint: https://${process.env.CLOUDFLARE_ACCOUNT_ID}.r2.cloudflarestorage.com`);
-    console.log(`[UPLOAD] Tamanho do arquivo: ${req.file.size} bytes`);
+  // Global request logger for debugging
+  app.use((req, res, next) => {
+    console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
+    next();
+  });
 
-    const command = new PutObjectCommand({
-      Bucket: bucketName,
-      Key: fileName,
-      Body: req.file.buffer,
-      ContentType: "application/pdf",
+  app.use(cors({
+    origin: true,
+    credentials: true
+  }));
+  app.use(express.json({ limit: '100mb' }));
+  app.use(express.urlencoded({ limit: '100mb', extended: true }));
+
+  // API Routes
+  const apiRouter = express.Router();
+
+  apiRouter.get("/health", (req, res) => {
+    res.json({ 
+      status: "ok", 
+      env: {
+        r2: !!process.env.CLOUDFLARE_ACCOUNT_ID,
+        resend: !!process.env.RESEND_API_KEY,
+        email: !!process.env.EMAIL_TO_INSTITUTIONAL
+      }
     });
+  });
 
-    const s3Response = await s3Client.send(command);
-    console.log("[UPLOAD] Upload R2 concluído com sucesso:", s3Response.$metadata.requestId);
+  apiRouter.post("/upload", upload.single("file"), async (req, res) => {
+    try {
+      console.log("[UPLOAD] Recebendo pedido de upload...");
+      
+      if (!process.env.CLOUDFLARE_ACCOUNT_ID) {
+          throw new Error("CLOUDFLARE_ACCOUNT_ID não configurado no servidor");
+      }
 
-    // Construct public URL
-    const publicUrl = `${process.env.CLOUDFLARE_PUBLIC_URL}/${fileName}`;
-    console.log("[UPLOAD] URL Pública gerada:", publicUrl);
+      if (!req.file) {
+        console.error("[UPLOAD] Erro: Nenhum arquivo no request");
+        return res.status(400).json({ error: "Nenhum arquivo enviado" });
+      }
 
-    res.json({ url: publicUrl, fileName });
-  } catch (error: any) {
-    console.error("[UPLOAD] Erro CRÍTICO no upload R2:", {
-      message: error.message,
-      stack: error.stack,
-      code: error.code,
-      requestId: error.$metadata?.requestId,
-      bucket: process.env.CLOUDFLARE_BUCKET_NAME || "laudosdefesacivil"
-    });
-    res.status(500).json({ error: error.message, code: error.code });
-  }
-});
+      const fileName = req.body.fileName || `${Date.now()}-${req.file.originalname}`;
+      const bucketName = process.env.CLOUDFLARE_BUCKET_NAME || "laudosdefesacivil";
 
-apiRouter.delete("/storage", async (req, res) => {
-  try {
-    const { fileNames } = req.body;
-    console.log("[STORAGE] Recebendo pedido de exclusão para:", fileNames);
-    if (!Array.isArray(fileNames) || fileNames.length === 0) {
-      return res.status(400).json({ error: "Lista de arquivos inválida" });
-    }
+      console.log(`[UPLOAD] Iniciando upload de ${fileName} para o bucket ${bucketName}...`);
+      console.log(`[UPLOAD] Endpoint: https://${process.env.CLOUDFLARE_ACCOUNT_ID}.r2.cloudflarestorage.com`);
+      console.log(`[UPLOAD] Tamanho do arquivo: ${req.file.size} bytes`);
 
-    const bucketName = process.env.CLOUDFLARE_BUCKET_NAME || "laudosdefesacivil";
-
-    const deletePromises = fileNames.map(fileName => {
-      const command = new DeleteObjectCommand({
+      const command = new PutObjectCommand({
         Bucket: bucketName,
         Key: fileName,
+        Body: req.file.buffer,
+        ContentType: "application/pdf",
       });
-      return s3Client.send(command);
-    });
 
-    await Promise.all(deletePromises);
-    console.log("[STORAGE] Exclusão concluída com sucesso");
-    res.json({ success: true });
-  } catch (error: any) {
-    console.error("[STORAGE] Erro ao deletar do R2:", {
-      message: error.message,
-      code: error.code,
-      requestId: error.$metadata?.requestId
-    });
-    res.status(500).json({ error: error.message, code: error.code });
-  }
-});
+      const s3Response = await s3Client.send(command);
+      console.log("[UPLOAD] Upload R2 concluído com sucesso:", s3Response.$metadata.requestId);
 
-apiRouter.post("/send-email", async (req, res) => {
-  try {
-    const { subject, html, fileName, fileBufferBase64 } = req.body;
-    console.log(`[EMAIL] Recebido pedido de envio. Assunto: ${subject}, Arquivo: ${fileName}`);
+      // Construct public URL
+      const publicUrl = `${process.env.CLOUDFLARE_PUBLIC_URL}/${fileName}`;
+      console.log("[UPLOAD] URL Pública gerada:", publicUrl);
 
-    if (!fileBufferBase64) {
-      console.warn("[EMAIL] Aviso: Nenhum conteúdo de arquivo (base64) recebido.");
-    } else {
-      console.log(`[EMAIL] Tamanho do anexo (Base64): ${fileBufferBase64.length} caracteres`);
+      res.json({ url: publicUrl, fileName });
+    } catch (error: any) {
+      console.error("[UPLOAD] Erro CRÍTICO no upload R2:", {
+        message: error.message,
+        stack: error.stack,
+        code: error.code,
+        requestId: error.$metadata?.requestId,
+        bucket: process.env.CLOUDFLARE_BUCKET_NAME || "laudosdefesacivil"
+      });
+      res.status(500).json({ error: error.message, code: error.code });
     }
+  });
 
-    const attachments = [];
-    if (fileName && fileBufferBase64) {
-      try {
-        attachments.push({
-          filename: fileName,
-          content: Buffer.from(fileBufferBase64, 'base64'),
-        });
-      } catch (bufErr) {
-        console.error("[EMAIL] Erro ao converter base64 para Buffer:", bufErr);
-        return res.status(400).json({ error: "Falha ao processar anexo do e-mail" });
+  apiRouter.delete("/storage", async (req, res) => {
+    try {
+      const { fileNames } = req.body;
+      console.log("[STORAGE] Recebendo pedido de exclusão para:", fileNames);
+      if (!Array.isArray(fileNames) || fileNames.length === 0) {
+        return res.status(400).json({ error: "Lista de arquivos inválida" });
       }
+
+      const bucketName = process.env.CLOUDFLARE_BUCKET_NAME || "laudosdefesacivil";
+
+      const deletePromises = fileNames.map(fileName => {
+        const command = new DeleteObjectCommand({
+          Bucket: bucketName,
+          Key: fileName,
+        });
+        return s3Client.send(command);
+      });
+
+      await Promise.all(deletePromises);
+      console.log("[STORAGE] Exclusão concluída com sucesso");
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("[STORAGE] Erro ao deletar do R2:", {
+        message: error.message,
+        code: error.code,
+        requestId: error.$metadata?.requestId
+      });
+      res.status(500).json({ error: error.message, code: error.code });
     }
+  });
 
-    const institutionalEmail = process.env.EMAIL_TO_INSTITUTIONAL;
-    if (!institutionalEmail) {
-      console.error("[EMAIL] Erro: EMAIL_TO_INSTITUTIONAL não configurado");
-      return res.status(400).json({ error: "E-mail institucional não configurado" });
+  apiRouter.post("/send-email", async (req, res) => {
+    try {
+      const { subject, html, fileName, fileBufferBase64 } = req.body;
+      console.log(`[EMAIL] Recebido pedido de envio. Assunto: ${subject}, Arquivo: ${fileName}`);
+
+      if (!fileBufferBase64) {
+        console.warn("[EMAIL] Aviso: Nenhum conteúdo de arquivo (base64) recebido.");
+      } else {
+        console.log(`[EMAIL] Tamanho do anexo (Base64): ${fileBufferBase64.length} caracteres`);
+      }
+
+      const attachments = [];
+      if (fileName && fileBufferBase64) {
+        try {
+          attachments.push({
+            filename: fileName,
+            content: Buffer.from(fileBufferBase64, 'base64'),
+          });
+        } catch (bufErr) {
+          console.error("[EMAIL] Erro ao converter base64 para Buffer:", bufErr);
+          return res.status(400).json({ error: "Falha ao processar anexo do e-mail" });
+        }
+      }
+
+      const institutionalEmail = process.env.EMAIL_TO_INSTITUTIONAL;
+      if (!institutionalEmail) {
+        console.error("[EMAIL] Erro: EMAIL_TO_INSTITUTIONAL não configurado");
+        return res.status(400).json({ error: "E-mail institucional não configurado" });
+      }
+
+      console.log(`[EMAIL] Enviando para: ${institutionalEmail}`);
+
+      if (!process.env.RESEND_API_KEY) {
+        console.error("[EMAIL] Erro: RESEND_API_KEY não configurado");
+        return res.status(500).json({ error: "Serviço de e-mail não configurado no servidor (API Key ausente)" });
+      }
+
+      const { data, error } = await resend.emails.send({
+        from: process.env.EMAIL_FROM || "onboarding@resend.dev",
+        to: [institutionalEmail],
+        subject: subject || "Laudo Técnico de Imóvel - Defesa Civil",
+        html: html || "<p>Segue em anexo o laudo técnico solicitado.</p>",
+        attachments,
+      });
+
+      if (error) {
+        console.error("[EMAIL] Erro retornado pelo Resend:", error);
+        return res.status(400).json({ error });
+      }
+
+      console.log("[EMAIL] E-mail enviado com sucesso via Resend:", data?.id);
+      res.json({ success: true, data });
+    } catch (error: any) {
+      console.error("[EMAIL] Erro CRÍTICO ao enviar e-mail:", error);
+      res.status(500).json({ error: error.message });
     }
+  });
 
-    console.log(`[EMAIL] Enviando para: ${institutionalEmail}`);
+  app.use("/api", apiRouter);
+  // Also mount at root for Vercel serverless function calls that might have stripped the /api prefix
+  app.use("/", (req, res, next) => {
+    if (req.url.startsWith("/api") || req.url === "/" || req.url === "/index.html") return next();
+    apiRouter(req, res, next);
+  });
 
-    if (!process.env.RESEND_API_KEY) {
-      console.error("[EMAIL] Erro: RESEND_API_KEY não configurado");
-      return res.status(500).json({ error: "Serviço de e-mail não configurado no servidor (API Key ausente)" });
-    }
+  // Vite middleware for development or fallback if dist is missing
+  const isProduction = process.env.NODE_ENV === "production";
+  const isVercel = !!process.env.VERCEL;
+  const distExists = fs.existsSync(path.resolve("dist"));
 
-    const { data, error } = await resend.emails.send({
-      from: process.env.EMAIL_FROM || "onboarding@resend.dev",
-      to: [institutionalEmail],
-      subject: subject || "Laudo Técnico de Imóvel - Defesa Civil",
-      html: html || "<p>Segue em anexo o laudo técnico solicitado.</p>",
-      attachments,
+  if (!isVercel && (!isProduction || !distExists)) {
+    console.log(`[SYSTEM] Usando middleware Vite (Produção: ${isProduction}, Dist existe: ${distExists})`);
+    const { createServer: createViteServer } = await import("vite");
+    const vite = await createViteServer({
+      server: { middlewareMode: true },
+      appType: "spa",
     });
-
-    if (error) {
-      console.error("[EMAIL] Erro retornado pelo Resend:", error);
-      return res.status(400).json({ error });
-    }
-
-    console.log("[EMAIL] E-mail enviado com sucesso via Resend:", data?.id);
-    res.json({ success: true, data });
-  } catch (error: any) {
-    console.error("[EMAIL] Erro CRÍTICO ao enviar e-mail:", error);
-    res.status(500).json({ error: error.message });
+    app.use(vite.middlewares);
+  } else if (distExists) {
+    console.log("[SYSTEM] Servindo arquivos estáticos da pasta 'dist'");
+    app.use(express.static("dist"));
+    app.get("*", (req, res) => {
+      res.sendFile("dist/index.html", { root: "." });
+    });
   }
-});
 
-app.use("/api", apiRouter);
+  // Only start the server if this file is run directly (not as a serverless function)
+  if (process.env.NODE_ENV !== "production" || !process.env.VERCEL) {
+    app.listen(PORT, "0.0.0.0", () => {
+      console.log(`[SYSTEM] Servidor rodando em http://0.0.0.0:${PORT}`);
+      console.log(`[SYSTEM] NODE_ENV: ${process.env.NODE_ENV}`);
+      console.log(`[SYSTEM] R2 Configurado: ${!!process.env.CLOUDFLARE_ACCOUNT_ID}`);
+      console.log(`[SYSTEM] Resend Configurado: ${!!process.env.RESEND_API_KEY}`);
+    });
+  }
 
-export default app;
-
-// Verify R2 Config on startup
-if (!process.env.CLOUDFLARE_ACCOUNT_ID || !process.env.CLOUDFLARE_ACCESS_KEY_ID || !process.env.CLOUDFLARE_SECRET_ACCESS_KEY) {
-  console.warn("AVISO: Configurações do Cloudflare R2 incompletas no .env");
+  return app;
 }
 
-// Vite middleware for development or fallback if dist is missing
-const isProduction = process.env.NODE_ENV === "production";
-const distExists = fs.existsSync(path.resolve("dist"));
-
-if (!isProduction || !distExists) {
-  console.log(`[SYSTEM] Usando middleware Vite (Produção: ${isProduction}, Dist existe: ${distExists})`);
-  const vite = await createViteServer({
-    server: { middlewareMode: true },
-    appType: "spa",
-  });
-  app.use(vite.middlewares);
-} else {
-  console.log("[SYSTEM] Servindo arquivos estáticos da pasta 'dist'");
-  app.use(express.static("dist"));
-  app.get("*", (req, res) => {
-    res.sendFile("dist/index.html", { root: "." });
-  });
-}
-
-app.listen(PORT, "0.0.0.0", () => {
-  console.log(`[SYSTEM] Servidor rodando em http://0.0.0.0:${PORT}`);
-  console.log(`[SYSTEM] NODE_ENV: ${process.env.NODE_ENV}`);
-  console.log(`[SYSTEM] R2 Configurado: ${!!process.env.CLOUDFLARE_ACCOUNT_ID}`);
-  console.log(`[SYSTEM] Resend Configurado: ${!!process.env.RESEND_API_KEY}`);
-});
+const appPromise = startServer();
+export default await appPromise;

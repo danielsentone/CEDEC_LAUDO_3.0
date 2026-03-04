@@ -8,7 +8,10 @@ export default defineConfig(({ mode }) => {
       server: {
         port: 3000,
         host: '0.0.0.0',
-        hmr: false,
+        hmr: {
+          overlay: false,
+          clientPort: 443
+        },
       },
       plugins: [react()],
       define: {
