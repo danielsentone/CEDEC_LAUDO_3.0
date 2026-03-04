@@ -139,14 +139,25 @@ apiRouter.delete("/storage", async (req, res) => {
 apiRouter.post("/send-email", async (req, res) => {
   try {
     const { subject, html, fileName, fileBufferBase64 } = req.body;
-    console.log("[EMAIL] Iniciando envio de e-mail institucional...");
+    console.log(`[EMAIL] Recebido pedido de envio. Assunto: ${subject}, Arquivo: ${fileName}`);
+
+    if (!fileBufferBase64) {
+      console.warn("[EMAIL] Aviso: Nenhum conteúdo de arquivo (base64) recebido.");
+    } else {
+      console.log(`[EMAIL] Tamanho do anexo (Base64): ${fileBufferBase64.length} caracteres`);
+    }
 
     const attachments = [];
     if (fileName && fileBufferBase64) {
-      attachments.push({
-        filename: fileName,
-        content: Buffer.from(fileBufferBase64, 'base64'),
-      });
+      try {
+        attachments.push({
+          filename: fileName,
+          content: Buffer.from(fileBufferBase64, 'base64'),
+        });
+      } catch (bufErr) {
+        console.error("[EMAIL] Erro ao converter base64 para Buffer:", bufErr);
+        return res.status(400).json({ error: "Falha ao processar anexo do e-mail" });
+      }
     }
 
     const institutionalEmail = process.env.EMAIL_TO_INSTITUTIONAL;
@@ -205,5 +216,8 @@ if (process.env.NODE_ENV !== "production") {
 }
 
 app.listen(PORT, "0.0.0.0", () => {
-  console.log(`Servidor rodando em http://0.0.0.0:${PORT}`);
+  console.log(`[SYSTEM] Servidor rodando em http://0.0.0.0:${PORT}`);
+  console.log(`[SYSTEM] NODE_ENV: ${process.env.NODE_ENV}`);
+  console.log(`[SYSTEM] R2 Configurado: ${!!process.env.CLOUDFLARE_ACCOUNT_ID}`);
+  console.log(`[SYSTEM] Resend Configurado: ${!!process.env.RESEND_API_KEY}`);
 });

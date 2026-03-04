@@ -1338,12 +1338,13 @@ export function App() {
                 pdfUrl = uploadData.url;
                 console.log("[UPLOAD] Upload concluído com sucesso. URL:", pdfUrl);
             } else {
-                let errorMsg = "Resposta inválida do servidor";
+                const errorText = await uploadResponse.text();
+                let errorMsg = errorText;
                 try {
-                    const errorData = await uploadResponse.json();
-                    errorMsg = errorData.error || errorMsg;
+                    const errorData = JSON.parse(errorText);
+                    errorMsg = errorData.error || errorText;
                 } catch (e) {
-                    errorMsg = await uploadResponse.text();
+                    // Not JSON
                 }
                 console.error("[UPLOAD] Erro no servidor:", errorMsg);
                 alert(`Aviso: O laudo foi baixado, mas não pôde ser salvo na nuvem. Erro: ${errorMsg.substring(0, 100)}`);
@@ -1358,15 +1359,16 @@ export function App() {
         if (pdfBlob) {
             console.log("[EMAIL] Iniciando envio de e-mail...");
             try {
-                const base64Content = await new Promise<string>((resolve, reject) => {
-                    const reader = new FileReader();
-                    reader.onloadend = () => {
-                        const base64String = (reader.result as string).split(',')[1];
-                        resolve(base64String);
-                    };
-                    reader.onerror = () => reject(new Error("Falha ao ler o PDF para envio de e-mail."));
-                    reader.readAsDataURL(pdfBlob);
-                });
+                // Converter Blob para Base64 usando ArrayBuffer (mais robusto)
+                console.log("[EMAIL] Convertendo PDF para Base64...");
+                const arrayBuffer = await pdfBlob.arrayBuffer();
+                const bytes = new Uint8Array(arrayBuffer);
+                let binary = '';
+                for (let i = 0; i < bytes.byteLength; i++) {
+                    binary += String.fromCharCode(bytes[i]);
+                }
+                const base64Content = btoa(binary);
+                console.log("[EMAIL] Conversão concluída. Tamanho Base64:", base64Content.length);
 
                 const emailResponse = await fetch('/api/send-email', {
                     method: 'POST',
@@ -1393,25 +1395,21 @@ export function App() {
                     console.log("[EMAIL] E-mail enviado com sucesso!");
                     alert("Sucesso! Laudo gerado, baixado e enviado por e-mail.");
                 } else {
-                    let errorMessage = "Erro desconhecido";
+                    const errorText = await emailResponse.text();
+                    let errorMessage = errorText;
                     try {
-                        const contentType = emailResponse.headers.get("content-type");
-                        if (contentType && contentType.indexOf("application/json") !== -1) {
-                            const emailError = await emailResponse.json();
-                            errorMessage = emailError.error || JSON.stringify(emailError);
-                        } else {
-                            errorMessage = await emailResponse.text();
-                        }
+                        const errorData = JSON.parse(errorText);
+                        errorMessage = errorData.error || errorText;
                     } catch (e) {
-                        errorMessage = "Falha ao ler resposta de erro do servidor";
+                        // Not JSON
                     }
                     console.error("[EMAIL] Erro no servidor:", errorMessage);
                     alert(`Aviso: O laudo foi gerado e baixado, mas o envio do e-mail falhou. Detalhes: ${errorMessage.substring(0, 100)}`);
                 }
             } catch (emailErr) {
-                console.error("[EMAIL] Falha de rede:", emailErr);
+                console.error("[EMAIL] Falha ao processar e-mail:", emailErr);
                 const errorMsg = emailErr instanceof Error ? emailErr.message : String(emailErr);
-                alert(`Erro de Conexão (E-mail): Não foi possível enviar o e-mail. Detalhes: ${errorMsg}.`);
+                alert(`Erro no processamento do E-mail: ${errorMsg}.`);
             }
         }
 
@@ -2762,7 +2760,7 @@ export function App() {
                     </div>
                 </form>
                 <div className="p-4 bg-gray-50 border-t border-gray-100 flex justify-between items-center text-[10px] text-gray-400 font-bold uppercase tracking-widest">
-                    <span>Versão 2.2 (Final)</span>
+                    <span>Versão 2.3 (Final)</span>
                     <button 
                         type="button"
                         onClick={() => {
