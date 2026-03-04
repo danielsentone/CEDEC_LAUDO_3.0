@@ -11,9 +11,24 @@ dotenv.config();
 const app = express();
 const PORT = 3000;
 
-app.use(cors());
+app.use(cors({
+  origin: true,
+  credentials: true
+}));
 app.use(express.json({ limit: '100mb' }));
 app.use(express.urlencoded({ limit: '100mb', extended: true }));
+
+// Health check
+app.get("/api/health", (req, res) => {
+  res.json({ 
+    status: "ok", 
+    env: {
+      r2: !!process.env.CLOUDFLARE_ACCOUNT_ID,
+      resend: !!process.env.RESEND_API_KEY,
+      email: !!process.env.EMAIL_TO_INSTITUTIONAL
+    }
+  });
+});
 
 // Multer for file uploads with increased limits
 const upload = multer({ 
@@ -57,8 +72,9 @@ app.post("/api/upload", upload.single("file"), async (req, res) => {
     const fileName = req.body.fileName || `${Date.now()}-${req.file.originalname}`;
     const bucketName = process.env.CLOUDFLARE_BUCKET_NAME || "laudosdefesacivil";
 
-    console.log(`Fazendo upload de ${fileName} para o bucket ${bucketName}...`);
-    console.log(`Endpoint: https://${process.env.CLOUDFLARE_ACCOUNT_ID}.r2.cloudflarestorage.com`);
+    console.log(`[UPLOAD] Iniciando upload de ${fileName} para o bucket ${bucketName}...`);
+    console.log(`[UPLOAD] Endpoint: https://${process.env.CLOUDFLARE_ACCOUNT_ID}.r2.cloudflarestorage.com`);
+    console.log(`[UPLOAD] Tamanho do arquivo: ${req.file.size} bytes`);
 
     const command = new PutObjectCommand({
       Bucket: bucketName,

@@ -1,5 +1,5 @@
-const CACHE_NAME = 'defesa-civil-pr-v3';
-const TILES_CACHE_NAME = 'defesa-civil-tiles-v3';
+const CACHE_NAME = 'defesa-civil-pr-v4';
+const TILES_CACHE_NAME = 'defesa-civil-tiles-v4';
 
 // Assets fundamentais da aplicação
 const ASSETS_TO_CACHE = [
@@ -45,18 +45,19 @@ self.addEventListener('activate', (event) => {
 
 // Interceptação de Requisições
 self.addEventListener('fetch', (event) => {
-  const url = new URL(event.request.url);
-
-  // 1. IGNORAR REQUISIÇÕES NÃO-GET (Cache API só suporta GET)
+  // 1. IGNORAR IMEDIATAMENTE REQUISIÇÕES NÃO-GET
   if (event.request.method !== 'GET') return;
 
-  // 2. IGNORAR API E SUPABASE (Deixar passar para a rede)
-  if (url.pathname.startsWith('/api/') || url.hostname.includes('supabase.co')) {
+  const url = new URL(event.request.url);
+
+  // 2. IGNORAR IMEDIATAMENTE API, SUPABASE E CHROME EXTENSIONS
+  if (
+    url.pathname.includes('/api/') || 
+    url.hostname.includes('supabase.co') || 
+    !url.protocol.startsWith('http')
+  ) {
     return;
   }
-
-  // 3. IGNORAR PROTOCOLOS NÃO-HTTP (ex: chrome-extension, data, blob)
-  if (!url.protocol.startsWith('http')) return;
 
   // 4. Estratégia para Tiles de Mapa (Cache First)
   if (url.href.includes('tile.openstreetmap.org') || 

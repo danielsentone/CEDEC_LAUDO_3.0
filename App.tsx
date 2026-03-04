@@ -1284,41 +1284,54 @@ export function App() {
     setIsLoading(true);
     try {
         const mapImg = await captureMap();
-        // 1. Download localmente
-        await generateLaudoPDF({ ...formData, id_laudo: idLaudo }, selectedEngineer, 'save', mapImg || undefined, isSpecificLocation);
         
-        // 2. Gerar blob para upload
+        // 1. Gerar blob para upload, download e e-mail (Geramos apenas UMA vez para eficiência)
         const pdfBlob = await generateLaudoPDF({ ...formData, id_laudo: idLaudo }, selectedEngineer, 'blob', mapImg || undefined, isSpecificLocation) as Blob;
         
+        if (!pdfBlob) {
+            throw new Error("Falha ao gerar o arquivo PDF.");
+        }
+
+        // 2. Download local imediato para garantir que o usuário tenha o arquivo
+        const fileName = getLaudoFilename(formData);
+        const downloadUrl = URL.createObjectURL(pdfBlob);
+        const link = document.createElement('a');
+        link.href = downloadUrl;
+        link.download = fileName;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        setTimeout(() => URL.revokeObjectURL(downloadUrl), 100);
+
         let pdfUrl = '';
-        const fileName = `${Date.now()}_${getLaudoFilename(formData)}`;
+        const uploadFileName = `${Date.now()}_${fileName}`;
+        const apiBaseUrl = window.location.origin;
 
-        if (pdfBlob) {
-            console.log("Iniciando upload para Cloudflare R2...");
-            // Upload to Cloudflare R2 via our new API
-            const formDataUpload = new FormData();
-            formDataUpload.append('file', pdfBlob, fileName);
-            formDataUpload.append('fileName', fileName);
+        // 3. Upload para Cloudflare R2
+        console.log("Iniciando upload para Cloudflare R2...");
+        const formDataUpload = new FormData();
+        formDataUpload.append('fileName', uploadFileName);
+        formDataUpload.append('file', pdfBlob, uploadFileName);
 
-            try {
-                const uploadResponse = await fetch('/api/upload', {
-                    method: 'POST',
-                    body: formDataUpload,
-                });
-                
-                if (uploadResponse.ok) {
-                    const uploadData = await uploadResponse.json();
-                    pdfUrl = uploadData.url;
-                    console.log("Upload concluído com sucesso. URL:", pdfUrl);
-                } else {
-                    const errorData = await uploadResponse.json();
-                    console.error("Erro no servidor ao fazer upload para o R2:", errorData);
-                    alert(`Aviso: O laudo foi baixado no seu PC, mas não pôde ser salvo na nuvem. Erro: ${errorData.error || 'Desconhecido'}`);
-                }
-            } catch (uploadErr) {
-                console.error("Falha de rede ao tentar upload:", uploadErr);
-                alert(`Aviso: Falha de conexão ao tentar salvar o laudo na nuvem. Detalhes: ${uploadErr instanceof Error ? uploadErr.message : String(uploadErr)}`);
+        try {
+            const uploadResponse = await fetch(`${apiBaseUrl}/api/upload`, {
+                method: 'POST',
+                body: formDataUpload,
+            });
+            
+            if (uploadResponse.ok) {
+                const uploadData = await uploadResponse.json();
+                pdfUrl = uploadData.url;
+                console.log("Upload concluído com sucesso. URL:", pdfUrl);
+            } else {
+                const errorData = await uploadResponse.json();
+                console.error("Erro no servidor ao fazer upload para o R2:", errorData);
+                alert(`Aviso: O laudo foi baixado, mas não pôde ser salvo na nuvem. Erro: ${errorData.error || 'Resposta inválida do servidor'}`);
             }
+        } catch (uploadErr) {
+            console.error("Falha de rede ao tentar upload:", uploadErr);
+            const errorMsg = uploadErr instanceof Error ? uploadErr.message : String(uploadErr);
+            alert(`Erro de Conexão (Upload): Não foi possível salvar na nuvem. Detalhes: ${errorMsg}.`);
         }
 
         // 3. Enviar E-mail (Sempre envia para a instituição)
@@ -1335,7 +1348,7 @@ export function App() {
                     reader.readAsDataURL(pdfBlob);
                 });
 
-                const emailResponse = await fetch('/api/send-email', {
+                const emailResponse = await fetch(`${apiBaseUrl}/api/send-email`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -1347,8 +1360,8 @@ export function App() {
                                 <p><strong>Protocolo:</strong> ${formData.protocolo}</p>
                                 <p><strong>Requerente:</strong> ${formData.requerente}</p>
                                 <p>O documento oficial segue em anexo a este e-mail para sua conferência.</p>
-                                <br/>
-                                <p style="font-size: 12px; color: #6b7280;">Este é um e-mail automático do sistema de Laudos Técnicos.</p>
+                                <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;" />
+                                <p style="font-size: 12px; color: #666;">Este é um e-mail automático gerado pelo Sistema de Laudos da Defesa Civil.</p>
                             </div>
                         `,
                         fileName: fileName,
@@ -1357,19 +1370,24 @@ export function App() {
                 });
                 
                 if (emailResponse.ok) {
-                    console.log("E-mail enviado com sucesso.");
+                    console.log("E-mail enviado com sucesso!");
+                    alert("Sucesso! Laudo gerado, baixado e enviado por e-mail.");
                 } else {
                     const contentType = emailResponse.headers.get("content-type");
+                    let errorMessage = "Erro desconhecido";
                     if (contentType && contentType.indexOf("application/json") !== -1) {
                         const emailError = await emailResponse.json();
                         console.warn("Erro no servidor de e-mail:", emailError);
+                        errorMessage = emailError.error || JSON.stringify(emailError);
                     } else {
-                        const errorText = await emailResponse.text();
-                        console.warn("Erro não-JSON no servidor de e-mail:", errorText.substring(0, 200));
+                        errorMessage = await emailResponse.text();
+                        console.warn("Erro não-JSON no servidor de e-mail:", errorMessage.substring(0, 200));
                     }
+                    alert(`Aviso: O laudo foi gerado e baixado, mas o envio do e-mail falhou. Detalhes: ${errorMessage}`);
                 }
             } catch (emailErr) {
                 console.error("Falha de rede ao tentar enviar e-mail:", emailErr);
+                alert(`Erro de Conexão (E-mail): Não foi possível enviar o e-mail. Detalhes: ${emailErr instanceof Error ? emailErr.message : String(emailErr)}`);
             }
         }
 
@@ -1574,7 +1592,7 @@ export function App() {
               
               if (fileName) {
                   try {
-                      const deleteResponse = await fetch('/api/storage', {
+                      const deleteResponse = await fetch(`${window.location.origin}/api/storage`, {
                           method: 'DELETE',
                           headers: { 'Content-Type': 'application/json' },
                           body: JSON.stringify({ fileNames: [fileName] }),
@@ -2719,6 +2737,29 @@ export function App() {
                         </button>
                     </div>
                 </form>
+                <div className="p-4 bg-gray-50 border-t border-gray-100 flex justify-between items-center text-[10px] text-gray-400 font-bold uppercase tracking-widest">
+                    <span>Versão 2.2 (Final)</span>
+                    <button 
+                        type="button"
+                        onClick={() => {
+                            if ('serviceWorker' in navigator) {
+                                navigator.serviceWorker.getRegistrations().then(registrations => {
+                                    for (let registration of registrations) {
+                                        registration.unregister();
+                                    }
+                                    // @ts-ignore
+                                    window.location.reload(true);
+                                });
+                            } else {
+                                // @ts-ignore
+                                window.location.reload(true);
+                            }
+                        }}
+                        className="hover:text-blue-600 transition-colors flex items-center gap-1"
+                    >
+                        <Zap size={10} /> Limpar Cache
+                    </button>
+                </div>
             </div>
         </div>
     );
