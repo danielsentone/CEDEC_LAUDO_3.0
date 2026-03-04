@@ -1331,9 +1331,10 @@ export function App() {
         setTimeout(() => URL.revokeObjectURL(downloadUrl), 100);
 
         let pdfUrl = '';
+        /*
         const uploadFileName = `${Date.now()}_${fileName}`;
 
-        // 4. Upload para Cloudflare R2
+        // 4. Upload para Cloudflare R2 (DESATIVADO TEMPORARIAMENTE)
         console.log("[UPLOAD] Iniciando upload para Cloudflare R2...");
         const formDataUpload = new FormData();
         formDataUpload.append('fileName', uploadFileName);
@@ -1357,35 +1358,36 @@ export function App() {
                     errorMsg = errorData.error || errorText;
                 } catch (e) { }
                 console.error("[UPLOAD] Erro no servidor:", errorMsg);
-                alert(`Aviso: O laudo foi baixado, mas não pôde ser salvo na nuvem. Erro: ${errorMsg.substring(0, 100)}`);
+                // alert(`Aviso: O laudo foi baixado, mas não pôde ser salvo na nuvem. Erro: ${errorMsg.substring(0, 100)}`);
             }
         } catch (uploadErr) {
             console.error("[UPLOAD] Falha de rede:", uploadErr);
-            alert(`Erro de Conexão (Upload): Não foi possível salvar na nuvem.`);
+            // alert(`Erro de Conexão (Upload): Não foi possível salvar na nuvem.`);
         }
+        */
 
         // 5. Enviar E-mail (Sempre envia para a instituição)
         console.log("[EMAIL] Iniciando envio de e-mail...");
         try {
+            const emailFormData = new FormData();
+            emailFormData.append('subject', `Laudo Técnico de Imóvel - Protocolo ${formData.protocolo}`);
+            emailFormData.append('html', `
+                <div style="font-family: sans-serif; color: #1e3a8a;">
+                    <h2 style="color: #1e3a8a;">Defesa Civil do Paraná</h2>
+                    <p>Informamos que o laudo técnico referente à vistoria do imóvel localizado em <strong>${formData.municipio}</strong> foi gerado com sucesso.</p>
+                    <p><strong>Protocolo:</strong> ${formData.protocolo}</p>
+                    <p><strong>Requerente:</strong> ${formData.requerente}</p>
+                    <p>O documento oficial segue em anexo a este e-mail para sua conferência.</p>
+                    <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;" />
+                    <p style="font-size: 12px; color: #666;">Este é um e-mail automático gerado pelo Sistema de Laudos da Defesa Civil.</p>
+                </div>
+            `);
+            emailFormData.append('fileName', fileName);
+            emailFormData.append('file', pdfBlob, fileName);
+
             const emailResponse = await fetch('/api/send-email', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    subject: `Laudo Técnico de Imóvel - Protocolo ${formData.protocolo}`,
-                    html: `
-                        <div style="font-family: sans-serif; color: #1e3a8a;">
-                            <h2 style="color: #1e3a8a;">Defesa Civil do Paraná</h2>
-                            <p>Informamos que o laudo técnico referente à vistoria do imóvel localizado em <strong>${formData.municipio}</strong> foi gerado com sucesso.</p>
-                            <p><strong>Protocolo:</strong> ${formData.protocolo}</p>
-                            <p><strong>Requerente:</strong> ${formData.requerente}</p>
-                            <p>O documento oficial segue em anexo a este e-mail para sua conferência.</p>
-                            <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;" />
-                            <p style="font-size: 12px; color: #666;">Este é um e-mail automático gerado pelo Sistema de Laudos da Defesa Civil.</p>
-                        </div>
-                    `,
-                    fileName: fileName,
-                    fileBufferBase64: base64Content
-                }),
+                body: emailFormData,
             });
             
             if (emailResponse.ok) {
@@ -1406,7 +1408,7 @@ export function App() {
             alert(`Erro no processamento do E-mail. Verifique sua conexão.`);
         }
 
-        // Registrar Histórico (Apenas se o upload funcionou ou se não era necessário)
+        // Registrar Histórico (Sem o PDF, apenas o registro da ação)
         if (formData.protocolo) {
             // Encontrar ID do protocolo pelo numeroProtocolo
             const protocol = protocols.find(p => p.numeroProtocolo === formData.protocolo);
@@ -1416,7 +1418,7 @@ export function App() {
                     engineer_id: selectedEngineer.id,
                     engineer_name: selectedEngineer.name,
                     created_at: new Date().toISOString(),
-                    pdf_url: pdfUrl || undefined // Only save if we have a URL
+                    pdf_url: undefined // Não salvamos o PDF no banco por enquanto
                 };
 
                 const { data: insertedData, error } = await supabase.from('laudo_history').insert(historyEntry).select();

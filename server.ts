@@ -138,28 +138,29 @@ async function startServer() {
     }
   });
 
-  apiRouter.post("/send-email", async (req, res) => {
+  apiRouter.post("/send-email", upload.single("file"), async (req, res) => {
     try {
-      const { subject, html, fileName, fileBufferBase64 } = req.body;
+      const { subject, html, fileName: bodyFileName } = req.body;
+      const file = req.file;
+      
+      const fileName = file ? file.originalname : bodyFileName;
+      
       console.log(`[EMAIL] Recebido pedido de envio. Assunto: ${subject}, Arquivo: ${fileName}`);
 
-      if (!fileBufferBase64) {
-        console.warn("[EMAIL] Aviso: Nenhum conteúdo de arquivo (base64) recebido.");
-      } else {
-        console.log(`[EMAIL] Tamanho do anexo (Base64): ${fileBufferBase64.length} caracteres`);
-      }
-
       const attachments = [];
-      if (fileName && fileBufferBase64) {
-        try {
-          attachments.push({
-            filename: fileName,
-            content: Buffer.from(fileBufferBase64, 'base64'),
-          });
-        } catch (bufErr) {
-          console.error("[EMAIL] Erro ao converter base64 para Buffer:", bufErr);
-          return res.status(400).json({ error: "Falha ao processar anexo do e-mail" });
-        }
+      if (file) {
+        console.log(`[EMAIL] Anexo recebido via multipart: ${file.size} bytes`);
+        attachments.push({
+          filename: fileName,
+          content: file.buffer,
+        });
+      } else if (req.body.fileBufferBase64) {
+        // Fallback para o método antigo se necessário
+        console.log(`[EMAIL] Anexo recebido via Base64: ${req.body.fileBufferBase64.length} caracteres`);
+        attachments.push({
+          filename: fileName,
+          content: Buffer.from(req.body.fileBufferBase64, 'base64'),
+        });
       }
 
       const institutionalEmail = process.env.EMAIL_TO_INSTITUTIONAL;
