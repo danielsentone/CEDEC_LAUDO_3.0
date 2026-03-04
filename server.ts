@@ -8,28 +8,6 @@ import { Resend } from "resend";
 
 dotenv.config();
 
-const app = express();
-const PORT = 3000;
-
-app.use(cors({
-  origin: true,
-  credentials: true
-}));
-app.use(express.json({ limit: '100mb' }));
-app.use(express.urlencoded({ limit: '100mb', extended: true }));
-
-// Health check
-app.get("/api/health", (req, res) => {
-  res.json({ 
-    status: "ok", 
-    env: {
-      r2: !!process.env.CLOUDFLARE_ACCOUNT_ID,
-      resend: !!process.env.RESEND_API_KEY,
-      email: !!process.env.EMAIL_TO_INSTITUTIONAL
-    }
-  });
-});
-
 // Multer for file uploads with increased limits
 const upload = multer({ 
   storage: multer.memoryStorage(),
@@ -47,25 +25,49 @@ const s3Client = new S3Client({
   forcePathStyle: false,
 });
 
-// Verify R2 Config on startup
-if (!process.env.CLOUDFLARE_ACCOUNT_ID || !process.env.CLOUDFLARE_ACCESS_KEY_ID || !process.env.CLOUDFLARE_SECRET_ACCESS_KEY) {
-  console.warn("AVISO: Configurações do Cloudflare R2 incompletas no .env");
-}
-
 // Resend Client
 const resend = new Resend(process.env.RESEND_API_KEY);
 
+const app = express();
+const PORT = 3000;
+
+// Global request logger for debugging
+app.use((req, res, next) => {
+  console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
+  next();
+});
+
+app.use(cors({
+  origin: true,
+  credentials: true
+}));
+app.use(express.json({ limit: '100mb' }));
+app.use(express.urlencoded({ limit: '100mb', extended: true }));
+
 // API Routes
-app.post("/api/upload", upload.single("file"), async (req, res) => {
+const apiRouter = express.Router();
+
+apiRouter.get("/health", (req, res) => {
+  res.json({ 
+    status: "ok", 
+    env: {
+      r2: !!process.env.CLOUDFLARE_ACCOUNT_ID,
+      resend: !!process.env.RESEND_API_KEY,
+      email: !!process.env.EMAIL_TO_INSTITUTIONAL
+    }
+  });
+});
+
+apiRouter.post("/upload", upload.single("file"), async (req, res) => {
   try {
-    console.log("Recebendo pedido de upload...");
+    console.log("[UPLOAD] Recebendo pedido de upload...");
     
     if (!process.env.CLOUDFLARE_ACCOUNT_ID) {
         throw new Error("CLOUDFLARE_ACCOUNT_ID não configurado no servidor");
     }
 
     if (!req.file) {
-      console.error("Erro: Nenhum arquivo no request");
+      console.error("[UPLOAD] Erro: Nenhum arquivo no request");
       return res.status(400).json({ error: "Nenhum arquivo enviado" });
     }
 
@@ -84,15 +86,15 @@ app.post("/api/upload", upload.single("file"), async (req, res) => {
     });
 
     const s3Response = await s3Client.send(command);
-    console.log("Upload R2 concluído com sucesso:", s3Response.$metadata.requestId);
+    console.log("[UPLOAD] Upload R2 concluído com sucesso:", s3Response.$metadata.requestId);
 
     // Construct public URL
     const publicUrl = `${process.env.CLOUDFLARE_PUBLIC_URL}/${fileName}`;
-    console.log("URL Pública gerada:", publicUrl);
+    console.log("[UPLOAD] URL Pública gerada:", publicUrl);
 
     res.json({ url: publicUrl, fileName });
   } catch (error: any) {
-    console.error("Erro CRÍTICO no upload R2:", {
+    console.error("[UPLOAD] Erro CRÍTICO no upload R2:", {
       message: error.message,
       stack: error.stack,
       code: error.code,
@@ -103,10 +105,10 @@ app.post("/api/upload", upload.single("file"), async (req, res) => {
   }
 });
 
-app.delete("/api/storage", async (req, res) => {
+apiRouter.delete("/storage", async (req, res) => {
   try {
     const { fileNames } = req.body;
-    console.log("Recebendo pedido de exclusão para:", fileNames);
+    console.log("[STORAGE] Recebendo pedido de exclusão para:", fileNames);
     if (!Array.isArray(fileNames) || fileNames.length === 0) {
       return res.status(400).json({ error: "Lista de arquivos inválida" });
     }
@@ -122,10 +124,10 @@ app.delete("/api/storage", async (req, res) => {
     });
 
     await Promise.all(deletePromises);
-    console.log("Exclusão concluída com sucesso");
+    console.log("[STORAGE] Exclusão concluída com sucesso");
     res.json({ success: true });
   } catch (error: any) {
-    console.error("Erro ao deletar do R2:", {
+    console.error("[STORAGE] Erro ao deletar do R2:", {
       message: error.message,
       code: error.code,
       requestId: error.$metadata?.requestId
@@ -134,10 +136,10 @@ app.delete("/api/storage", async (req, res) => {
   }
 });
 
-app.post("/api/send-email", async (req, res) => {
+apiRouter.post("/send-email", async (req, res) => {
   try {
     const { subject, html, fileName, fileBufferBase64 } = req.body;
-    console.log("Iniciando envio de e-mail institucional...");
+    console.log("[EMAIL] Iniciando envio de e-mail institucional...");
 
     const attachments = [];
     if (fileName && fileBufferBase64) {
@@ -149,14 +151,14 @@ app.post("/api/send-email", async (req, res) => {
 
     const institutionalEmail = process.env.EMAIL_TO_INSTITUTIONAL;
     if (!institutionalEmail) {
-      console.error("Erro: EMAIL_TO_INSTITUTIONAL não configurado");
+      console.error("[EMAIL] Erro: EMAIL_TO_INSTITUTIONAL não configurado");
       return res.status(400).json({ error: "E-mail institucional não configurado" });
     }
 
-    console.log(`Enviando para: ${institutionalEmail}`);
+    console.log(`[EMAIL] Enviando para: ${institutionalEmail}`);
 
     if (!process.env.RESEND_API_KEY) {
-      console.error("Erro: RESEND_API_KEY não configurado");
+      console.error("[EMAIL] Erro: RESEND_API_KEY não configurado");
       return res.status(500).json({ error: "Serviço de e-mail não configurado no servidor (API Key ausente)" });
     }
 
@@ -169,17 +171,24 @@ app.post("/api/send-email", async (req, res) => {
     });
 
     if (error) {
-      console.error("Erro retornado pelo Resend:", error);
+      console.error("[EMAIL] Erro retornado pelo Resend:", error);
       return res.status(400).json({ error });
     }
 
-    console.log("E-mail enviado com sucesso via Resend:", data?.id);
+    console.log("[EMAIL] E-mail enviado com sucesso via Resend:", data?.id);
     res.json({ success: true, data });
   } catch (error: any) {
-    console.error("Erro CRÍTICO ao enviar e-mail:", error);
+    console.error("[EMAIL] Erro CRÍTICO ao enviar e-mail:", error);
     res.status(500).json({ error: error.message });
   }
 });
+
+app.use("/api", apiRouter);
+
+// Verify R2 Config on startup
+if (!process.env.CLOUDFLARE_ACCOUNT_ID || !process.env.CLOUDFLARE_ACCESS_KEY_ID || !process.env.CLOUDFLARE_SECRET_ACCESS_KEY) {
+  console.warn("AVISO: Configurações do Cloudflare R2 incompletas no .env");
+}
 
 // Vite middleware for development
 if (process.env.NODE_ENV !== "production") {

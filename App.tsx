@@ -454,6 +454,21 @@ export function App() {
 
   // Fetch Data from Supabase
   useEffect(() => {
+    const checkApiHealth = async () => {
+        try {
+            const response = await fetch('/api/health');
+            if (response.ok) {
+                const data = await response.json();
+                console.log("[DIAGNOSTIC] API Health Check:", data);
+            } else {
+                console.warn("[DIAGNOSTIC] API Health Check failed with status:", response.status);
+            }
+        } catch (err) {
+            console.error("[DIAGNOSTIC] API Health Check failed to connect:", err);
+        }
+    };
+    checkApiHealth();
+
     const fetchData = async () => {
         setIsLoading(true);
         try {
@@ -1305,16 +1320,15 @@ export function App() {
 
         let pdfUrl = '';
         const uploadFileName = `${Date.now()}_${fileName}`;
-        const apiBaseUrl = window.location.origin;
 
         // 3. Upload para Cloudflare R2
-        console.log("Iniciando upload para Cloudflare R2...");
+        console.log("[UPLOAD] Iniciando upload para Cloudflare R2...");
         const formDataUpload = new FormData();
         formDataUpload.append('fileName', uploadFileName);
         formDataUpload.append('file', pdfBlob, uploadFileName);
 
         try {
-            const uploadResponse = await fetch(`${apiBaseUrl}/api/upload`, {
+            const uploadResponse = await fetch('/api/upload', {
                 method: 'POST',
                 body: formDataUpload,
             });
@@ -1322,21 +1336,27 @@ export function App() {
             if (uploadResponse.ok) {
                 const uploadData = await uploadResponse.json();
                 pdfUrl = uploadData.url;
-                console.log("Upload concluído com sucesso. URL:", pdfUrl);
+                console.log("[UPLOAD] Upload concluído com sucesso. URL:", pdfUrl);
             } else {
-                const errorData = await uploadResponse.json();
-                console.error("Erro no servidor ao fazer upload para o R2:", errorData);
-                alert(`Aviso: O laudo foi baixado, mas não pôde ser salvo na nuvem. Erro: ${errorData.error || 'Resposta inválida do servidor'}`);
+                let errorMsg = "Resposta inválida do servidor";
+                try {
+                    const errorData = await uploadResponse.json();
+                    errorMsg = errorData.error || errorMsg;
+                } catch (e) {
+                    errorMsg = await uploadResponse.text();
+                }
+                console.error("[UPLOAD] Erro no servidor:", errorMsg);
+                alert(`Aviso: O laudo foi baixado, mas não pôde ser salvo na nuvem. Erro: ${errorMsg.substring(0, 100)}`);
             }
         } catch (uploadErr) {
-            console.error("Falha de rede ao tentar upload:", uploadErr);
+            console.error("[UPLOAD] Falha de rede:", uploadErr);
             const errorMsg = uploadErr instanceof Error ? uploadErr.message : String(uploadErr);
             alert(`Erro de Conexão (Upload): Não foi possível salvar na nuvem. Detalhes: ${errorMsg}.`);
         }
 
-        // 3. Enviar E-mail (Sempre envia para a instituição)
+        // 4. Enviar E-mail (Sempre envia para a instituição)
         if (pdfBlob) {
-            console.log("Iniciando envio de e-mail...");
+            console.log("[EMAIL] Iniciando envio de e-mail...");
             try {
                 const base64Content = await new Promise<string>((resolve, reject) => {
                     const reader = new FileReader();
@@ -1344,11 +1364,11 @@ export function App() {
                         const base64String = (reader.result as string).split(',')[1];
                         resolve(base64String);
                     };
-                    reader.onerror = reject;
+                    reader.onerror = () => reject(new Error("Falha ao ler o PDF para envio de e-mail."));
                     reader.readAsDataURL(pdfBlob);
                 });
 
-                const emailResponse = await fetch(`${apiBaseUrl}/api/send-email`, {
+                const emailResponse = await fetch('/api/send-email', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -1370,24 +1390,28 @@ export function App() {
                 });
                 
                 if (emailResponse.ok) {
-                    console.log("E-mail enviado com sucesso!");
+                    console.log("[EMAIL] E-mail enviado com sucesso!");
                     alert("Sucesso! Laudo gerado, baixado e enviado por e-mail.");
                 } else {
-                    const contentType = emailResponse.headers.get("content-type");
                     let errorMessage = "Erro desconhecido";
-                    if (contentType && contentType.indexOf("application/json") !== -1) {
-                        const emailError = await emailResponse.json();
-                        console.warn("Erro no servidor de e-mail:", emailError);
-                        errorMessage = emailError.error || JSON.stringify(emailError);
-                    } else {
-                        errorMessage = await emailResponse.text();
-                        console.warn("Erro não-JSON no servidor de e-mail:", errorMessage.substring(0, 200));
+                    try {
+                        const contentType = emailResponse.headers.get("content-type");
+                        if (contentType && contentType.indexOf("application/json") !== -1) {
+                            const emailError = await emailResponse.json();
+                            errorMessage = emailError.error || JSON.stringify(emailError);
+                        } else {
+                            errorMessage = await emailResponse.text();
+                        }
+                    } catch (e) {
+                        errorMessage = "Falha ao ler resposta de erro do servidor";
                     }
-                    alert(`Aviso: O laudo foi gerado e baixado, mas o envio do e-mail falhou. Detalhes: ${errorMessage}`);
+                    console.error("[EMAIL] Erro no servidor:", errorMessage);
+                    alert(`Aviso: O laudo foi gerado e baixado, mas o envio do e-mail falhou. Detalhes: ${errorMessage.substring(0, 100)}`);
                 }
             } catch (emailErr) {
-                console.error("Falha de rede ao tentar enviar e-mail:", emailErr);
-                alert(`Erro de Conexão (E-mail): Não foi possível enviar o e-mail. Detalhes: ${emailErr instanceof Error ? emailErr.message : String(emailErr)}`);
+                console.error("[EMAIL] Falha de rede:", emailErr);
+                const errorMsg = emailErr instanceof Error ? emailErr.message : String(emailErr);
+                alert(`Erro de Conexão (E-mail): Não foi possível enviar o e-mail. Detalhes: ${errorMsg}.`);
             }
         }
 
