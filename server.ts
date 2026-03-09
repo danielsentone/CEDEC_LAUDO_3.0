@@ -3,6 +3,7 @@ import cors from "cors";
 import dotenv from "dotenv";
 import multer from "multer";
 import { S3Client, PutObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { Resend } from "resend";
 import fs from "fs";
 import path from "path";
@@ -69,10 +70,12 @@ async function startServer() {
   apiRouter.get("/health", (req, res) => {
     res.json({ 
       status: "ok", 
+      vercel: !!process.env.VERCEL,
       env: {
         r2: !!process.env.CLOUDFLARE_ACCOUNT_ID,
         resend: !!process.env.RESEND_API_KEY,
-        email: !!process.env.EMAIL_TO_INSTITUTIONAL
+        email: !!process.env.EMAIL_TO_INSTITUTIONAL,
+        supabase: !!process.env.SUPABASE_URL || !!process.env.VITE_SUPABASE_URL
       }
     });
   });
@@ -138,6 +141,42 @@ async function startServer() {
     }
   });
 
+  // New endpoint for Presigned URLs (Bypasses Vercel Payload Limits)
+  apiRouter.post("/presigned-url", async (req, res) => {
+    try {
+      const { fileName, contentType } = req.body;
+      console.log(`[PRESIGNED] Gerando URL para: ${fileName}, Tipo: ${contentType}`);
+
+      if (!fileName) {
+        return res.status(400).json({ error: "fileName é obrigatório" });
+      }
+
+      if (!process.env.CLOUDFLARE_PUBLIC_URL) {
+        console.error("[PRESIGNED] Erro: CLOUDFLARE_PUBLIC_URL não configurado");
+        return res.status(500).json({ error: "Configuração de URL pública do R2 ausente no servidor" });
+      }
+
+      const bucketName = process.env.CLOUDFLARE_BUCKET_NAME || "laudosdefesacivil";
+      const s3Client = getS3Client();
+
+      const command = new PutObjectCommand({
+        Bucket: bucketName,
+        Key: fileName,
+        ContentType: contentType || "application/pdf",
+      });
+
+      // URL expires in 15 minutes
+      const signedUrl = await getSignedUrl(s3Client, command, { expiresIn: 900 });
+      const publicUrl = `${process.env.CLOUDFLARE_PUBLIC_URL}/${fileName}`;
+
+      console.log(`[PRESIGNED] URL gerada com sucesso. URL Pública: ${publicUrl}`);
+      res.json({ uploadUrl: signedUrl, publicUrl });
+    } catch (error: any) {
+      console.error("[PRESIGNED] Erro ao gerar URL:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   apiRouter.delete("/storage", async (req, res) => {
     try {
       const { fileNames } = req.body;
@@ -172,25 +211,35 @@ async function startServer() {
 
   apiRouter.post("/send-email", async (req, res) => {
     try {
-      const { subject, html, fileName, fileBufferBase64 } = req.body;
+      const { subject, html, fileName, fileBufferBase64, fileUrl } = req.body;
       console.log(`[EMAIL] Recebido pedido de envio. Assunto: ${subject}, Arquivo: ${fileName}`);
 
-      if (!fileBufferBase64) {
-        console.warn("[EMAIL] Aviso: Nenhum conteúdo de arquivo (base64) recebido.");
+      if (fileUrl) {
+        console.log(`[EMAIL] Usando URL do arquivo para anexo: ${fileUrl}`);
+      } else if (!fileBufferBase64) {
+        console.warn("[EMAIL] Aviso: Nenhum conteúdo de arquivo (base64 ou URL) recebido.");
       } else {
         console.log(`[EMAIL] Tamanho do anexo (Base64): ${fileBufferBase64.length} caracteres`);
       }
 
       const attachments = [];
-      if (fileName && fileBufferBase64) {
-        try {
+      if (fileName) {
+        if (fileUrl) {
+          // Resend supports URLs in attachments
           attachments.push({
             filename: fileName,
-            content: Buffer.from(fileBufferBase64, 'base64'),
+            path: fileUrl,
           });
-        } catch (bufErr) {
-          console.error("[EMAIL] Erro ao converter base64 para Buffer:", bufErr);
-          return res.status(400).json({ error: "Falha ao processar anexo do e-mail" });
+        } else if (fileBufferBase64) {
+          try {
+            attachments.push({
+              filename: fileName,
+              content: Buffer.from(fileBufferBase64, 'base64'),
+            });
+          } catch (bufErr) {
+            console.error("[EMAIL] Erro ao converter base64 para Buffer:", bufErr);
+            return res.status(400).json({ error: "Falha ao processar anexo do e-mail" });
+          }
         }
       }
 

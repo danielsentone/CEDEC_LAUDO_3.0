@@ -1307,19 +1307,7 @@ export function App() {
             throw new Error("Falha ao gerar o arquivo PDF.");
         }
 
-        // 2. Converter para Base64 IMEDIATAMENTE (Método Binário Direto - Mais Robusto)
-        console.log("[SISTEMA] Processando PDF em memória...");
-        const arrayBuffer = await pdfBlob.arrayBuffer();
-        const bytes = new Uint8Array(arrayBuffer);
-        let binary = '';
-        const len = bytes.byteLength;
-        for (let i = 0; i < len; i++) {
-            binary += String.fromCharCode(bytes[i]);
-        }
-        const base64Content = btoa(binary);
-        console.log("[SISTEMA] PDF processado com sucesso. Tamanho:", base64Content.length);
-
-        // 3. Download local imediato
+        // 2. Download local imediato
         const fileName = getLaudoFilename(formData);
         const downloadUrl = URL.createObjectURL(pdfBlob);
         const link = document.createElement('a');
@@ -1333,75 +1321,116 @@ export function App() {
         let pdfUrl = '';
         const uploadFileName = `${Date.now()}_${fileName}`;
 
-        // 4. Upload para Cloudflare R2
-        console.log("[UPLOAD] Iniciando upload para Cloudflare R2...");
-        const formDataUpload = new FormData();
-        formDataUpload.append('fileName', uploadFileName);
-        formDataUpload.append('file', pdfBlob, uploadFileName);
-
+        // 3. Upload para Cloudflare R2 (Usando Presigned URL para evitar limites do Vercel)
+        console.log("[UPLOAD] Obtendo Presigned URL para upload direto...");
         try {
-            console.log("[UPLOAD] Enviando para /api/upload...");
-            const uploadResponse = await fetch('/api/upload', {
-                method: 'POST',
-                body: formDataUpload,
-            });
-            
-            if (uploadResponse.ok) {
-                const uploadData = await uploadResponse.json();
-                pdfUrl = uploadData.url;
-                console.log("[UPLOAD] Upload concluído com sucesso. URL:", pdfUrl);
-            } else {
-                const errorText = await uploadResponse.text();
-                let errorMsg = errorText;
-                try {
-                    const errorData = JSON.parse(errorText);
-                    errorMsg = errorData.error || errorText;
-                } catch (e) { }
-                console.error("[UPLOAD] Erro no servidor:", errorMsg, "Status:", uploadResponse.status);
-                alert(`Aviso: O laudo foi baixado, mas não pôde ser salvo na nuvem. Erro: ${errorMsg.substring(0, 100)} (Status: ${uploadResponse.status})`);
-            }
-        } catch (uploadErr: any) {
-            console.error("[UPLOAD] Falha de rede:", uploadErr);
-            const isOffline = !navigator.onLine;
-            alert(`Erro de Conexão (Upload): ${uploadErr.message || 'Falha na rede'}. ${isOffline ? 'Você parece estar offline.' : 'Verifique sua conexão com o servidor.'}`);
-        }
-
-        // 5. Enviar E-mail (Sempre envia para a instituição)
-        console.log("[EMAIL] Iniciando envio de e-mail...");
-        try {
-            const emailResponse = await fetch('/api/send-email', {
+            const presignedResponse = await fetch('/api/presigned-url', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    subject: `Laudo Técnico de Imóvel - Protocolo ${formData.protocolo}`,
-                    html: `
-                        <div style="font-family: sans-serif; color: #1e3a8a;">
-                            <h2 style="color: #1e3a8a;">Defesa Civil do Paraná</h2>
-                            <p>Informamos que o laudo técnico referente à vistoria do imóvel localizado em <strong>${formData.municipio}</strong> foi gerado com sucesso.</p>
-                            <p><strong>Protocolo:</strong> ${formData.protocolo}</p>
-                            <p><strong>Requerente:</strong> ${formData.requerente}</p>
-                            <p>O documento oficial segue em anexo a este e-mail para sua conferência.</p>
-                            <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;" />
-                            <p style="font-size: 12px; color: #666;">Este é um e-mail automático gerado pelo Sistema de Laudos da Defesa Civil.</p>
-                        </div>
-                    `,
-                    fileName: fileName,
-                    fileBufferBase64: base64Content
+                    fileName: uploadFileName,
+                    contentType: 'application/pdf'
                 }),
+            });
+
+            if (presignedResponse.ok) {
+                const { uploadUrl, publicUrl: generatedPublicUrl } = await presignedResponse.json();
+                console.log("[UPLOAD] Fazendo upload direto para Cloudflare...");
+                
+                const directUploadResponse = await fetch(uploadUrl, {
+                    method: 'PUT',
+                    body: pdfBlob,
+                    headers: { 'Content-Type': 'application/pdf' }
+                });
+
+                if (directUploadResponse.ok) {
+                    pdfUrl = generatedPublicUrl;
+                    console.log("[UPLOAD] Upload direto concluído com sucesso. URL:", pdfUrl);
+                } else {
+                    const status = directUploadResponse.status;
+                    console.error("[UPLOAD] Falha no upload direto. Status:", status);
+                    alert(`Aviso: O laudo foi baixado, mas o upload para a nuvem falhou (Status: ${status}). Verifique se as configurações de CORS no R2 foram aplicadas.`);
+                }
+            } else {
+                const errorText = await presignedResponse.text();
+                console.error("[UPLOAD] Falha ao obter Presigned URL:", errorText);
+                alert(`Aviso: O laudo foi baixado, mas não pôde ser salvo na nuvem (Erro ao obter autorização).`);
+            }
+        } catch (uploadErr: any) {
+            console.error("[UPLOAD] Erro no processo de upload:", uploadErr);
+            alert(`Aviso: O laudo foi baixado, mas o upload falhou: ${uploadErr.message}`);
+        }
+
+        // 4. Preparar conteúdo para E-mail
+        // Só calculamos o base64 se o upload falhou E o arquivo for pequeno o suficiente para o Vercel (aprox 3MB para segurança com base64)
+        let base64Content: string | undefined = undefined;
+        const MAX_VERCEL_PAYLOAD = 3 * 1024 * 1024; // 3MB (seguro para Vercel 4.5MB após base64)
+
+        if (!pdfUrl) {
+            if (pdfBlob.size < MAX_VERCEL_PAYLOAD) {
+                console.log(`[EMAIL] Upload falhou (tamanho: ${pdfBlob.size} bytes), usando fallback base64...`);
+                const arrayBuffer = await pdfBlob.arrayBuffer();
+                const bytes = new Uint8Array(arrayBuffer);
+                let binary = '';
+                for (let i = 0; i < bytes.byteLength; i++) {
+                    binary += String.fromCharCode(bytes[i]);
+                }
+                base64Content = btoa(binary);
+            } else {
+                console.warn(`[EMAIL] Upload falhou e arquivo (${pdfBlob.size} bytes) é muito grande para fallback base64.`);
+                // Não alertamos aqui para não acumular alerts, o erro final do e-mail será mais informativo
+            }
+        }
+
+        // 5. Enviar E-mail
+        console.log("[EMAIL] Iniciando envio de e-mail...");
+        try {
+            const emailPayload = {
+                subject: `Laudo Técnico de Imóvel - Protocolo ${formData.protocolo}`,
+                html: `
+                    <div style="font-family: sans-serif; color: #1e3a8a;">
+                        <h2 style="color: #1e3a8a;">Defesa Civil do Paraná</h2>
+                        <p>Informamos que o laudo técnico referente à vistoria do imóvel localizado em <strong>${formData.municipio}</strong> foi gerado com sucesso.</p>
+                        <p><strong>Protocolo:</strong> ${formData.protocolo}</p>
+                        <p><strong>Requerente:</strong> ${formData.requerente}</p>
+                        <p>O documento oficial segue em anexo a este e-mail para sua conferência.</p>
+                        ${pdfUrl ? `<p><strong>Link Permanente:</strong> <a href="${pdfUrl}">${pdfUrl}</a></p>` : '<p style="color: #dc2626;">Nota: O arquivo não pôde ser salvo na nuvem, mas foi anexado diretamente (se permitido pelo tamanho).</p>'}
+                        <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;" />
+                        <p style="font-size: 12px; color: #666;">Este é um e-mail automático gerado pelo Sistema de Laudos da Defesa Civil.</p>
+                    </div>
+                `,
+                fileName: fileName,
+                fileUrl: pdfUrl || undefined,
+                fileBufferBase64: base64Content
+            };
+
+            console.log(`[EMAIL] Enviando payload. Tamanho base64: ${base64Content?.length || 0}, URL: ${pdfUrl || 'N/A'}`);
+
+            const emailResponse = await fetch('/api/send-email', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(emailPayload),
             });
             
             if (emailResponse.ok) {
                 console.log("[EMAIL] E-mail enviado com sucesso!");
                 alert("Sucesso! Laudo gerado, baixado e enviado por e-mail.");
             } else {
+                const status = emailResponse.status;
                 const errorText = await emailResponse.text();
                 let errorMessage = errorText;
                 try {
                     const errorData = JSON.parse(errorText);
                     errorMessage = errorData.error || errorText;
                 } catch (e) { }
-                console.error("[EMAIL] Erro no servidor:", errorMessage);
-                alert(`Aviso: O laudo foi gerado e baixado, mas o envio do e-mail falhou. Detalhes: ${errorMessage.substring(0, 100)}`);
+                
+                console.error(`[EMAIL] Erro no servidor (Status: ${status}):`, errorMessage);
+                
+                if (status === 413 || errorMessage.includes('TOO_LARGE')) {
+                    alert("Erro: O arquivo PDF é muito grande para ser enviado por e-mail através do servidor Vercel. O upload na nuvem (R2) deve estar configurado corretamente para arquivos grandes.");
+                } else {
+                    alert(`Aviso: O laudo foi gerado e baixado, mas o envio do e-mail falhou. Detalhes: ${errorMessage.substring(0, 150)}`);
+                }
             }
         } catch (emailErr) {
             console.error("[EMAIL] Falha ao processar e-mail:", emailErr);

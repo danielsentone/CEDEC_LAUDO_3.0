@@ -12,7 +12,9 @@
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.997.0",
+    "@aws-sdk/s3-request-presigner": "^3.1004.0",
     "@supabase/supabase-js": "2",
+    "@tailwindcss/vite": "^4.2.1",
     "@vercel/node": "^5.6.10",
     "cors": "^2.8.6",
     "dotenv": "^17.3.1",
@@ -26,6 +28,7 @@
     "react-dom": "^19.2.3",
     "react-leaflet": "^5.0.0",
     "resend": "^6.9.2",
+    "tailwindcss": "^4.2.1",
     "tsx": "^4.21.0",
     "xlsx": "^0.18.5"
   },

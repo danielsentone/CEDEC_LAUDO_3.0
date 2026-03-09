@@ -3,6 +3,12 @@ import { App } from './App';
 import React from 'react';
 import './index.css';
 
+declare global {
+  interface Window {
+    hideLoader?: () => void;
+  }
+}
+
 console.log("[SYSTEM] index.tsx is running");
 
 window.onerror = function(message, source, lineno, colno, error) {

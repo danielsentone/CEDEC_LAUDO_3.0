@@ -104,7 +104,12 @@ export const generateLaudoPDF = async (
   mapImage?: string,
   showPin: boolean = true
 ): Promise<string | Blob | void> => {
-  const doc = new jsPDF('p', 'mm', 'a4');
+  const doc = new jsPDF({
+    orientation: 'p',
+    unit: 'mm',
+    format: 'a4',
+    compress: true
+  });
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
   const margin = 20;
