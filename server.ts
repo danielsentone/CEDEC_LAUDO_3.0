@@ -10,22 +10,39 @@ import path from "path";
 dotenv.config();
 
 async function startServer() {
+  // Global error handlers
+  process.on('uncaughtException', (err) => {
+    console.error('[SYSTEM] Uncaught Exception:', err);
+  });
+  process.on('unhandledRejection', (reason, promise) => {
+    console.error('[SYSTEM] Unhandled Rejection at:', promise, 'reason:', reason);
+  });
+
   // Multer for file uploads with increased limits
   const upload = multer({ 
     storage: multer.memoryStorage(),
     limits: { fileSize: 100 * 1024 * 1024 } // 100MB
   });
 
-  // R2 Client
-  const s3Client = new S3Client({
-    region: "auto",
-    endpoint: `https://${process.env.CLOUDFLARE_ACCOUNT_ID}.r2.cloudflarestorage.com`,
-    credentials: {
-      accessKeyId: process.env.CLOUDFLARE_ACCESS_KEY_ID || "",
-      secretAccessKey: process.env.CLOUDFLARE_SECRET_ACCESS_KEY || "",
-    },
-    forcePathStyle: false,
-  });
+  // R2 Client Getter (Lazy initialization to prevent crashes if env vars are missing)
+  let _s3Client: S3Client | null = null;
+  const getS3Client = () => {
+    if (!_s3Client) {
+      if (!process.env.CLOUDFLARE_ACCOUNT_ID || !process.env.CLOUDFLARE_ACCESS_KEY_ID || !process.env.CLOUDFLARE_SECRET_ACCESS_KEY) {
+        throw new Error("Configuração do Cloudflare R2 incompleta");
+      }
+      _s3Client = new S3Client({
+        region: "auto",
+        endpoint: `https://${process.env.CLOUDFLARE_ACCOUNT_ID}.r2.cloudflarestorage.com`,
+        credentials: {
+          accessKeyId: process.env.CLOUDFLARE_ACCESS_KEY_ID,
+          secretAccessKey: process.env.CLOUDFLARE_SECRET_ACCESS_KEY,
+        },
+        forcePathStyle: false,
+      });
+    }
+    return _s3Client;
+  };
 
   // Resend Client
   const resend = new Resend(process.env.RESEND_API_KEY);
@@ -35,7 +52,7 @@ async function startServer() {
 
   // Global request logger for debugging
   app.use((req, res, next) => {
-    console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
+    console.log(`[SYSTEM] ${new Date().toISOString()} ${req.method} ${req.url}`);
     next();
   });
 
@@ -60,12 +77,25 @@ async function startServer() {
     });
   });
 
-  apiRouter.post("/upload", upload.single("file"), async (req, res) => {
+  apiRouter.post("/upload", (req, res, next) => {
+    console.log("[UPLOAD] Iniciando processamento de multipart/form-data...");
+    upload.single("file")(req, res, (err) => {
+      if (err instanceof multer.MulterError) {
+        console.error("[UPLOAD] Erro do Multer:", err);
+        return res.status(400).json({ error: `Erro no upload: ${err.message}`, code: err.code });
+      } else if (err) {
+        console.error("[UPLOAD] Erro desconhecido no Multer:", err);
+        return res.status(500).json({ error: "Erro interno no processamento do arquivo" });
+      }
+      next();
+    });
+  }, async (req, res) => {
     try {
-      console.log("[UPLOAD] Recebendo pedido de upload...");
+      console.log("[UPLOAD] Recebendo pedido de upload após processamento Multer...");
       
-      if (!process.env.CLOUDFLARE_ACCOUNT_ID) {
-          throw new Error("CLOUDFLARE_ACCOUNT_ID não configurado no servidor");
+      if (!process.env.CLOUDFLARE_ACCOUNT_ID || !process.env.CLOUDFLARE_ACCESS_KEY_ID || !process.env.CLOUDFLARE_SECRET_ACCESS_KEY) {
+          console.error("[UPLOAD] Erro: Credenciais R2 incompletas");
+          return res.status(500).json({ error: "Configuração de armazenamento (R2) incompleta no servidor" });
       }
 
       if (!req.file) {
@@ -80,6 +110,7 @@ async function startServer() {
       console.log(`[UPLOAD] Endpoint: https://${process.env.CLOUDFLARE_ACCOUNT_ID}.r2.cloudflarestorage.com`);
       console.log(`[UPLOAD] Tamanho do arquivo: ${req.file.size} bytes`);
 
+      const s3Client = getS3Client();
       const command = new PutObjectCommand({
         Bucket: bucketName,
         Key: fileName,
@@ -117,6 +148,7 @@ async function startServer() {
 
       const bucketName = process.env.CLOUDFLARE_BUCKET_NAME || "laudosdefesacivil";
 
+      const s3Client = getS3Client();
       const deletePromises = fileNames.map(fileName => {
         const command = new DeleteObjectCommand({
           Bucket: bucketName,
@@ -138,29 +170,28 @@ async function startServer() {
     }
   });
 
-  apiRouter.post("/send-email", upload.single("file"), async (req, res) => {
+  apiRouter.post("/send-email", async (req, res) => {
     try {
-      const { subject, html, fileName: bodyFileName } = req.body;
-      const file = req.file;
-      
-      const fileName = file ? file.originalname : bodyFileName;
-      
+      const { subject, html, fileName, fileBufferBase64 } = req.body;
       console.log(`[EMAIL] Recebido pedido de envio. Assunto: ${subject}, Arquivo: ${fileName}`);
 
+      if (!fileBufferBase64) {
+        console.warn("[EMAIL] Aviso: Nenhum conteúdo de arquivo (base64) recebido.");
+      } else {
+        console.log(`[EMAIL] Tamanho do anexo (Base64): ${fileBufferBase64.length} caracteres`);
+      }
+
       const attachments = [];
-      if (file) {
-        console.log(`[EMAIL] Anexo recebido via multipart: ${file.size} bytes`);
-        attachments.push({
-          filename: fileName,
-          content: file.buffer,
-        });
-      } else if (req.body.fileBufferBase64) {
-        // Fallback para o método antigo se necessário
-        console.log(`[EMAIL] Anexo recebido via Base64: ${req.body.fileBufferBase64.length} caracteres`);
-        attachments.push({
-          filename: fileName,
-          content: Buffer.from(req.body.fileBufferBase64, 'base64'),
-        });
+      if (fileName && fileBufferBase64) {
+        try {
+          attachments.push({
+            filename: fileName,
+            content: Buffer.from(fileBufferBase64, 'base64'),
+          });
+        } catch (bufErr) {
+          console.error("[EMAIL] Erro ao converter base64 para Buffer:", bufErr);
+          return res.status(400).json({ error: "Falha ao processar anexo do e-mail" });
+        }
       }
 
       const institutionalEmail = process.env.EMAIL_TO_INSTITUTIONAL;
@@ -198,11 +229,6 @@ async function startServer() {
   });
 
   app.use("/api", apiRouter);
-  // Also mount at root for Vercel serverless function calls that might have stripped the /api prefix
-  app.use("/", (req, res, next) => {
-    if (req.url.startsWith("/api") || req.url === "/" || req.url === "/index.html") return next();
-    apiRouter(req, res, next);
-  });
 
   // Vite middleware for development or fallback if dist is missing
   const isProduction = process.env.NODE_ENV === "production";

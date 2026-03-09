@@ -126,7 +126,7 @@ export const DamageInput: React.FC<DamageInputProps> = ({ value, onChange }) => 
               <div className="flex flex-wrap gap-3">
                 {item.photos.map((photo, idx) => (
                     <div key={idx} className="relative w-28 h-28 group rounded-lg overflow-hidden border border-gray-300 shadow-sm">
-                        <img src={photo} alt="Evidence" className="w-full h-full object-cover" />
+                        <img src={photo} alt="Evidence" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                         <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                             <button
                                 type="button"

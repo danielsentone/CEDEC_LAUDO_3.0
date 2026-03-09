@@ -4,6 +4,7 @@ export interface Engineer {
   crea: string;
   state?: string; // For new engineers
   institution?: string; // 'CEDEC' or 'Voluntário'
+  password?: string;
   isCustom?: boolean;
   active?: boolean;
 }
@@ -91,7 +92,7 @@ export interface Protocolo {
 
   // Avaliação Preliminar
   descricaoNivelDestruicao: string;
-  percentualDestruicao: '0%' | '40%' | '70%' | '100%';
+  percentualDestruicao: '0%' | '40%' | '70%' | '100%' | '';
   
   engineerId: string; // Quem cadastrou
   distributedToId?: string; // NOVO: Para quem foi distribuído

@@ -1,5 +1,8 @@
 import React, { useEffect, useState, useRef, forwardRef, useImperativeHandle, useCallback } from 'react';
 import { MapContainer, TileLayer, Marker, useMap, useMapEvents } from 'react-leaflet';
+const MapContainerAny = MapContainer as any;
+const TileLayerAny = TileLayer as any;
+const MarkerAny = Marker as any;
 import L from 'leaflet';
 import { City } from '../types';
 import { Locate, Loader2, Search, MapPin, X, List } from 'lucide-react';
@@ -846,16 +849,22 @@ export const MapPicker = forwardRef<MapPickerHandle, MapPickerProps>(({
           </button>
       </div>
       
-      <MapContainer 
+      <MapContainerAny 
         center={[centerLat, centerLng]} 
         zoom={initialZoom} 
         style={{ height: '100%', width: '100%' }} 
         zoomSnap={0.5} 
         zoomDelta={0.5}
       >
-        {layer === 'osm' && (<TileLayer attribution='&copy; OpenStreetMap' url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" crossOrigin="anonymous" />)}
-        {layer === 'sat' && (<TileLayer attribution='Tiles &copy; Esri' url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}" crossOrigin="anonymous" />)}
-        {layer === 'hybrid' && (<TileLayer attribution='&copy; Google Maps' url="https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}" crossOrigin="anonymous" />)}
+        {layer === 'osm' && (
+          <TileLayerAny attribution='&copy; OpenStreetMap' url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" crossOrigin="anonymous" />
+        )}
+        {layer === 'sat' && (
+          <TileLayerAny attribution='Tiles &copy; Esri' url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}" crossOrigin="anonymous" />
+        )}
+        {layer === 'hybrid' && (
+          <TileLayerAny attribution='&copy; Google Maps' url="https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}" crossOrigin="anonymous" />
+        )}
         
         <MapController 
             lat={centerLat} 
@@ -870,9 +879,9 @@ export const MapPicker = forwardRef<MapPickerHandle, MapPickerProps>(({
         {/* Lógica de Download Offline (sem UI) */}
         <OfflineDownloader layerType={layer} triggerRef={downloadTriggerRef} cancelRef={cancelDownloadRef} onStateChange={onDownloadStateChange} />
         
-        {showMarker && <Marker position={[centerLat, centerLng]} />}
+        {showMarker && <MarkerAny position={[centerLat, centerLng]} />}
         <MapEventsHandler onSelect={onMapSelect} onZoom={onMapZoom} />
-      </MapContainer>
+      </MapContainerAny>
       
       <div className={`map-instruction bg-blue-50 text-blue-800 text-xs p-2 text-center border-t border-blue-100 absolute bottom-0 w-full z-[400] opacity-100`}>
           Clique no mapa para definir a localização exata.
