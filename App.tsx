@@ -3,6 +3,11 @@ import { createPortal } from 'react-dom';
 // @ts-ignore
 import html2canvas from 'html2canvas';
 import * as XLSX from 'xlsx';
+import * as pdfjsLib from 'pdfjs-dist';
+
+// Set worker path for PDF.js
+pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@4.0.379/build/pdf.worker.min.mjs`;
+
 import { 
   BuildingTypology, 
   DamageClassification, 
@@ -19,7 +24,8 @@ import {
   INITIAL_ENGINEERS, 
   DAMAGE_LOGIC, 
   BRAZIL_STATES,
-  PARECER_TEXTS
+  PARECER_TEXTS,
+  PARECER_COMERCIAL
 } from './constants';
 import { RIO_BONITO_DATA } from './data/rioBonitoData';
 // Import logos from the assets directory
@@ -29,7 +35,7 @@ import { DamageInput } from './components/DamageInput';
 import { CityAutocomplete } from './components/CityAutocomplete';
 import { generateLaudoPDF, getLaudoFilename } from './services/pdfService';
 import { supabase } from './services/supabase';
-import { FileText, Save, MapPin, User, AlertTriangle, Building, Shield, Trash2, Edit, Lock, CheckCircle, XCircle, Trees, Eye, X, Download, Image as ImageIcon, Upload, Link as LinkIcon, Settings, CloudUpload, Check, Loader2, ClipboardList, DownloadCloud, Plus, LogIn, Key, LogOut, Zap, List, FilePlus, ArrowLeft, Phone, Users, ShieldCheck, ChevronDown, ChevronUp, Database } from 'lucide-react';
+import { FileText, Save, MapPin, User, AlertTriangle, Building, Shield, Trash2, Edit, Lock, CheckCircle, XCircle, Trees, Eye, X, Download, Image as ImageIcon, Upload, Link as LinkIcon, Settings, CloudUpload, Check, Loader2, ClipboardList, DownloadCloud, Plus, LogIn, Key, LogOut, Zap, List, FilePlus, ArrowLeft, Phone, Users, ShieldCheck, ChevronDown, ChevronUp, Database, Columns, ExternalLink } from 'lucide-react';
 
 // Helper to get Local Date in YYYY-MM-DD format
 const getLocalDate = () => {
@@ -201,43 +207,18 @@ const getDefaultPassword = (name: string) => {
 };
 
 // --- TYPES FOR VIEW STATE ---
-type ViewState = 'login' | 'protocolList' | 'protocolForm' | 'laudoForm' | 'manageUsers' | 'managePropertyData';
+type ViewState = 'landing' | 'login' | 'protocolList' | 'protocolForm' | 'laudoForm' | 'manageUsers' | 'managePropertyData';
 
 // Componente de botão de exclusão com confirmação inline
 const DeleteConfirmButton = ({ onDelete }: { onDelete: () => void }) => {
-    const [isConfirming, setIsConfirming] = useState(false);
-    const timeoutRef = useRef<NodeJS.Timeout | null>(null);
-
-    const handleClick = (e: React.MouseEvent) => {
-        e.preventDefault();
-        e.stopPropagation();
-        if (isConfirming) {
-            onDelete();
-        } else {
-            setIsConfirming(true);
-            // Auto-reset após 3 segundos se não confirmar
-            timeoutRef.current = setTimeout(() => setIsConfirming(false), 3000);
-        }
-    };
-
-    useEffect(() => {
-        return () => {
-            if (timeoutRef.current) clearTimeout(timeoutRef.current);
-        };
-    }, []);
-
     return (
         <button 
             type="button"
-            onClick={handleClick}
-            className={`p-1.5 rounded transition-all duration-200 flex items-center gap-1 ${isConfirming ? 'bg-red-600 text-white w-auto px-2 shadow-sm' : 'text-red-500 hover:bg-red-50 hover:text-red-700'}`}
-            title={isConfirming ? "Clique novamente para confirmar" : "Excluir registro"}
+            onClick={(e) => { e.preventDefault(); e.stopPropagation(); onDelete(); }}
+            className="p-1.5 rounded transition-all duration-200 text-red-500 hover:bg-red-50 hover:text-red-700"
+            title="Excluir registro"
         >
-            {isConfirming ? (
-                <span className="text-[10px] font-bold uppercase whitespace-nowrap">Confirmar?</span>
-            ) : (
-                <Trash2 size={14} />
-            )}
+            <Trash2 size={14} />
         </button>
     );
 };
@@ -246,42 +227,52 @@ const HistoryButton = ({
   protocol, 
   history, 
   isUserAdmin, 
+  currentEngineerId,
   onStartLaudo, 
-  onDeleteHistory 
+  onDeleteHistory,
+  onPreviewHistory
 }: {
   protocol: Protocolo;
   history: LaudoHistory[];
   isUserAdmin: boolean;
+  currentEngineerId: string;
   onStartLaudo: (p: Protocolo) => void;
   onDeleteHistory: (id: string) => void;
+  onPreviewHistory: (url: string) => void;
 }) => {
   const [isOpen, setIsOpen] = useState(false);
-  const [coords, setCoords] = useState({ top: 0, left: 0 });
+  const [coords, setCoords] = useState({ top: 0, left: 0, showBelow: false });
   const buttonRef = useRef<HTMLButtonElement>(null);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const updateCoords = () => {
     if (buttonRef.current) {
         const rect = buttonRef.current.getBoundingClientRect();
-        const scrollX = window.scrollX;
-        const scrollY = window.scrollY;
-        const popupWidth = 280;
+        const scrollX = window.pageXOffset || document.documentElement.scrollLeft;
+        const scrollY = window.pageYOffset || document.documentElement.scrollTop;
+        const popupWidth = Math.min(280, window.innerWidth - 20);
         const viewportWidth = window.innerWidth;
 
         // Determine horizontal position
         let leftPos = rect.left + scrollX;
         
         // If popup goes off-screen to the right, align it to the right edge of the button
-        if (rect.left + popupWidth > viewportWidth - 20) {
+        if (rect.left + popupWidth > viewportWidth - 10) {
             leftPos = (rect.right + scrollX) - popupWidth;
         }
 
         // Ensure it doesn't go off-screen to the left either
         if (leftPos < 10) leftPos = 10;
 
+        // Determine if it should be above or below
+        // If there's not enough space above (approx 250px), show below
+        const spaceAbove = rect.top;
+        const showBelow = spaceAbove < 250;
+
         setCoords({
-            top: rect.top + scrollY, 
-            left: leftPos
+            top: showBelow ? rect.bottom + scrollY + 8 : rect.top + scrollY - 8, 
+            left: leftPos,
+            showBelow
         });
     }
   };
@@ -352,17 +343,22 @@ const HistoryButton = ({
       </div>
 
       {hasHistory && isOpen && createPortal(
-          <div 
-              className="fixed bg-white rounded-lg shadow-xl border border-gray-200 p-3 z-[9999] animate-in fade-in zoom-in-95 duration-200"
-              style={{ 
-                  top: coords.top - 8, 
-                  left: coords.left,
-                  transform: 'translateY(-100%)', 
-                  width: '280px'
-              }}
-              onMouseEnter={handleMouseEnter}
-              onMouseLeave={handleMouseLeave}
-          >
+          <>
+              {/* Mobile Backdrop */}
+              <div className="fixed inset-0 z-[9998] md:hidden bg-black/5" onClick={() => setIsOpen(false)} />
+              
+              <div 
+                  className="absolute bg-white rounded-lg shadow-2xl border border-gray-200 p-3 z-[9999] animate-in fade-in zoom-in-95 duration-200"
+                  style={{ 
+                      top: coords.top, 
+                      left: coords.left,
+                      transform: coords.showBelow ? 'none' : 'translateY(-100%)', 
+                      width: '280px',
+                      maxWidth: 'calc(100vw - 20px)'
+                  }}
+                  onMouseEnter={handleMouseEnter}
+                  onMouseLeave={handleMouseLeave}
+              >
               <h4 className="text-xs font-bold text-gray-500 uppercase mb-2 border-b pb-1 flex justify-between items-center">
                   Histórico de Emissão
                   <button onClick={() => setIsOpen(false)} className="text-gray-400 hover:text-gray-600"><X size={14}/></button>
@@ -371,35 +367,193 @@ const HistoryButton = ({
                                   {history.map(h => (
                                       <div key={h.id} className="text-xs flex justify-between items-center gap-2 mb-2 border-b border-gray-100 pb-2 last:border-0 last:mb-0 last:pb-0 hover:bg-gray-50 p-2 rounded group/item">
                                           <div className="flex-1">
-                                              <div className="font-bold text-blue-900">{h.engineer_name}</div>
+                                              <div className="font-bold text-blue-900">
+                                                  {(() => {
+                                                      const parts = h.engineer_name.trim().split(/\s+/);
+                                                      return parts.length > 1 ? `${parts[0]} ${parts[parts.length - 1]}` : h.engineer_name;
+                                                  })()}
+                                              </div>
                                               <div className="text-[10px] text-gray-500">
                                                   {new Date(h.created_at).toLocaleString('pt-BR')}
                                               </div>
                                           </div>
                                           <div className="flex items-center gap-1">
                                               {h.pdf_url && (
-                                                  <a 
-                                                      href={h.pdf_url} 
-                                                      target="_blank" 
-                                                      rel="noopener noreferrer" 
-                                                      className="bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white p-1.5 rounded transition-all flex items-center gap-1 font-bold border border-blue-200"
-                                                      title="Baixar PDF do Cloudflare"
-                                                      onClick={(e) => e.stopPropagation()}
-                                                  >
-                                                      <Download size={14} /> <span className="text-[10px]">PDF</span>
-                                                  </a>
+                                                  <>
+                                                      <a 
+                                                          href={h.pdf_url} 
+                                                          target="_blank" 
+                                                          rel="noopener noreferrer" 
+                                                          className="bg-green-50 text-green-600 hover:bg-green-600 hover:text-white p-1.5 rounded transition-all flex items-center gap-1 font-bold border border-green-200"
+                                                          title="Baixar PDF"
+                                                          onClick={(e) => e.stopPropagation()}
+                                                      >
+                                                          <Download size={14} /> <span className="text-[10px]">PDF</span>
+                                                      </a>
+                                                  </>
                                               )}
-                                              {isUserAdmin && (
-                                                  <DeleteConfirmButton onDelete={() => onDeleteHistory(h.id)} />
-                                              )}
+                                              <DeleteConfirmButton onDelete={() => onDeleteHistory(h.id)} />
                                           </div>
                                       </div>
                                   ))}
               </div>
-          </div>,
+          </div>
+          </>,
           document.body
       )}
     </>
+  );
+};
+
+// Custom PDF Viewer Component for better Mobile/iOS experience
+const PDFViewer = ({ url }: { url: string }) => {
+  const [numPages, setNumPages] = useState<number>(0);
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [thumbnails, setThumbnails] = useState<string[]>([]);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [loading, setLoading] = useState(true);
+  const [pdfInstance, setPdfInstance] = useState<any>(null);
+
+  useEffect(() => {
+    const loadPDF = async () => {
+      setLoading(true);
+      try {
+        const loadingTask = pdfjsLib.getDocument(url);
+        const pdf = await loadingTask.promise;
+        setPdfInstance(pdf);
+        setNumPages(pdf.numPages);
+        
+        // Generate thumbnails
+        const thumbUrls: string[] = [];
+        for (let i = 1; i <= pdf.numPages; i++) {
+          const page = await pdf.getPage(i);
+          const viewport = page.getViewport({ scale: 0.2 });
+          const canvas = document.createElement('canvas');
+          const context = canvas.getContext('2d');
+          canvas.height = viewport.height;
+          canvas.width = viewport.width;
+          await page.render({ canvasContext: context!, viewport }).promise;
+          thumbUrls.push(canvas.toDataURL());
+        }
+        setThumbnails(thumbUrls);
+        renderPage(pdf, 1);
+      } catch (error) {
+        console.error('Error loading PDF:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadPDF();
+  }, [url]);
+
+  const renderPage = async (pdf: any, pageNum: number) => {
+    if (!pdf) return;
+    try {
+        const page = await pdf.getPage(pageNum);
+        const containerWidth = window.innerWidth < 640 ? window.innerWidth - 40 : 800;
+        const viewportOrig = page.getViewport({ scale: 1 });
+        const scale = containerWidth / viewportOrig.width;
+        const viewport = page.getViewport({ scale });
+        
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+        const context = canvas.getContext('2d');
+        if (!context) return;
+
+        canvas.height = viewport.height;
+        canvas.width = viewport.width;
+        
+        await page.render({ canvasContext: context, viewport }).promise;
+        setCurrentPage(pageNum);
+    } catch (err) {
+        console.error("Error rendering page:", err);
+    }
+  };
+
+  const goToPage = (pageNum: number) => {
+    if (pdfInstance) {
+      renderPage(pdfInstance, pageNum);
+      // Scroll main view to top
+      const mainView = document.getElementById('pdf-main-view');
+      if (mainView) mainView.scrollTop = 0;
+    }
+  };
+
+  return (
+    <div className="flex flex-col h-full bg-gray-900 text-white overflow-hidden">
+      <div className="flex-1 flex overflow-hidden">
+        {/* Sidebar Menu / Thumbnails */}
+        <div className="w-20 sm:w-44 bg-gray-800 border-r border-gray-700 overflow-y-auto p-2 flex flex-col gap-3 scrollbar-hide">
+          <h4 className="text-[10px] font-bold uppercase text-gray-500 mb-1 text-center">Páginas</h4>
+          {thumbnails.map((thumb, idx) => (
+            <button 
+              key={idx} 
+              onClick={() => goToPage(idx + 1)}
+              className={`relative border-2 rounded-lg transition-all overflow-hidden group ${currentPage === idx + 1 ? 'border-blue-500 ring-2 ring-blue-500/20 scale-95' : 'border-transparent opacity-60 hover:opacity-100'}`}
+            >
+              <img src={thumb} alt={`Pág ${idx + 1}`} className="w-full h-auto" />
+              <div className={`absolute inset-0 flex items-center justify-center bg-blue-500/10 transition-opacity ${currentPage === idx + 1 ? 'opacity-100' : 'opacity-0'}`}>
+                 <span className="bg-blue-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded shadow-lg">{idx + 1}</span>
+              </div>
+              {! (currentPage === idx + 1) && (
+                <span className="absolute bottom-1 right-1 bg-black/60 text-[9px] px-1 rounded text-white">{idx + 1}</span>
+              )}
+            </button>
+          ))}
+        </div>
+
+        {/* Main Content Area */}
+        <div id="pdf-main-view" className="flex-1 overflow-auto p-4 sm:p-8 flex justify-center items-start bg-gray-950">
+          {loading ? (
+            <div className="flex flex-col items-center justify-center h-full gap-4">
+              <Loader2 className="animate-spin text-blue-500" size={48} />
+              <p className="text-gray-400 text-sm font-medium animate-pulse">Carregando páginas...</p>
+            </div>
+          ) : (
+            <div className="shadow-[0_20px_50px_rgba(0,0,0,0.5)] bg-white rounded-sm overflow-hidden transition-transform duration-300">
+              <canvas ref={canvasRef} className="max-w-full h-auto" />
+            </div>
+          )}
+        </div>
+      </div>
+      
+      {/* Footer Controls */}
+      <div className="bg-gray-800 p-3 border-t border-gray-700 flex justify-between items-center px-4 sm:px-8 shrink-0">
+        <div className="flex items-center gap-2 sm:gap-6">
+           <button 
+            disabled={currentPage <= 1 || loading} 
+            onClick={() => goToPage(currentPage - 1)}
+            className="p-2 hover:bg-gray-700 rounded-full disabled:opacity-20 transition-colors"
+            title="Página Anterior"
+           >
+             <ChevronUp size={20} className="-rotate-90 sm:rotate-0" />
+           </button>
+           <div className="flex flex-col items-center">
+             <span className="text-[10px] text-gray-400 uppercase font-bold tracking-wider">Página</span>
+             <span className="text-sm font-mono font-bold">{currentPage} <span className="text-gray-500">/</span> {numPages}</span>
+           </div>
+           <button 
+            disabled={currentPage >= numPages || loading} 
+            onClick={() => goToPage(currentPage + 1)}
+            className="p-2 hover:bg-gray-700 rounded-full disabled:opacity-20 transition-colors"
+            title="Próxima Página"
+           >
+             <ChevronDown size={20} className="-rotate-90 sm:rotate-0" />
+           </button>
+        </div>
+        
+        <div className="flex items-center gap-2">
+           <a 
+             href={url} 
+             download="laudo-tecnico.pdf" 
+             className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg text-xs font-bold uppercase flex items-center gap-2 transition-all shadow-lg active:scale-95"
+           >
+             <Download size={14} /> <span className="hidden sm:inline">Baixar PDF</span>
+           </a>
+        </div>
+      </div>
+    </div>
   );
 };
 
@@ -451,6 +605,17 @@ export function App() {
   const [filterDate, setFilterDate] = useState('');
   const [filterLaudoStatus, setFilterLaudoStatus] = useState<'all' | 'issued' | 'pending'>('all');
   const [filterProtocolNumber, setFilterProtocolNumber] = useState('');
+
+  // COLUMN PERSISTENCE
+  const [visibleColumns, setVisibleColumns] = useState<string[]>(() => {
+    const saved = localStorage.getItem('protocolTableColumns');
+    return saved ? JSON.parse(saved) : ['Data', 'Protocolo', 'Município', 'Requerente', 'Distribuído Para', 'Status'];
+  });
+  const [showColumnToggle, setShowColumnToggle] = useState(false);
+
+  useEffect(() => {
+    localStorage.setItem('protocolTableColumns', JSON.stringify(visibleColumns));
+  }, [visibleColumns]);
 
   // Fetch Data from Supabase
   useEffect(() => {
@@ -668,10 +833,11 @@ export function App() {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deletePassword, setDeletePassword] = useState('');
   const [deleteError, setDeleteError] = useState('');
-  const [showPreview, setShowPreview] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [showPreviewModal, setShowPreviewModal] = useState(false);
   const [showCustomization, setShowCustomization] = useState(false);
   const [protocolToDelete, setProtocolToDelete] = useState<string | null>(null);
+  const [historyToDeleteId, setHistoryToDeleteId] = useState<string | null>(null);
 
   // Validation States
   const [cpfValid, setCpfValid] = useState<boolean | null>(null);
@@ -846,7 +1012,8 @@ export function App() {
 
   const handleClassificationChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
       const val = e.target.value as DamageClassification;
-      const defaultParecer = PARECER_TEXTS[val] || '';
+      const isComercial = formData.finalidade.includes('Comercial');
+      const defaultParecer = isComercial ? PARECER_COMERCIAL : (PARECER_TEXTS[val] || '');
       setFormData(prev => ({ ...prev, classificacao: val, parecerFinal: defaultParecer }));
   };
 
@@ -1018,8 +1185,17 @@ export function App() {
       }
   };
 
+  const closeDeleteModal = () => {
+      setShowDeleteModal(false);
+      setProtocolToDelete(null);
+      setHistoryToDeleteId(null);
+      setDeletePassword('');
+      setDeleteError('');
+  };
+
   const handleDeleteProtocol = (id: string) => {
       setProtocolToDelete(id);
+      setHistoryToDeleteId(null);
       setDeletePassword('');
       setDeleteError('');
       setShowDeleteModal(true);
@@ -1043,25 +1219,32 @@ export function App() {
           // 1. Find all history entries for this protocol to get PDF URLs for storage cleanup
           const historyToDelete = laudoHistory.filter(h => h.protocol_id === protocolToDelete);
           const filesToRemove = historyToDelete
-              .map(h => h.pdf_url?.split('/').pop())
+              .map(h => h.pdf_url?.split('/').pop()?.split('?')[0]) // Robust filename extraction
               .filter((name): name is string => !!name);
 
           if (filesToRemove.length > 0) {
               try {
-                  const deleteResponse = await fetch('/api/storage', {
+                  console.log(`[STORAGE] Removendo ${filesToRemove.length} arquivos associados ao protocolo...`);
+                  const deleteResponse = await fetch(`${window.location.origin}/api/storage`, {
                       method: 'DELETE',
                       headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify({ fileNames: filesToRemove }),
                   });
                   if (!deleteResponse.ok) {
-                      console.warn("Aviso: Erro ao remover arquivos do Storage durante exclusão de protocolo");
+                      const errorData = await deleteResponse.json();
+                      console.warn("Aviso: Erro ao remover arquivos do Storage durante exclusão de protocolo:", errorData);
+                  } else {
+                      console.log("[STORAGE] Arquivos removidos com sucesso.");
                   }
               } catch (storageErr) {
                   console.warn("Aviso: Falha na comunicação para remover arquivos do Storage:", storageErr);
               }
           }
 
-          // 2. Delete protocol (cascades to history in DB)
+          // 2. Delete from Database (Cascade)
+          // First delete history entries to ensure cleanup even if DB constraint is missing
+          await supabase.from('laudo_history').delete().eq('protocol_id', protocolToDelete);
+          
           const { error } = await supabase
               .from('protocols')
               .delete()
@@ -1071,8 +1254,8 @@ export function App() {
               setDeleteError("Erro ao excluir: " + error.message);
           } else {
               setProtocols(prev => prev.filter(p => p.id !== protocolToDelete));
-              setShowDeleteModal(false);
-              setProtocolToDelete(null);
+              setLaudoHistory(prev => prev.filter(h => h.protocol_id !== protocolToDelete));
+              closeDeleteModal();
           }
       } catch (err) {
           setDeleteError("Erro de conexão.");
@@ -1210,66 +1393,122 @@ export function App() {
 
   const captureMap = async () => {
     const mapElement = document.getElementById('map-print-container');
-    if (!mapElement) return null;
-
-    // Store original state to restore later
-    const originalStyle = mapElement.getAttribute('style') || '';
-    const isMobile = window.innerWidth < 768;
-    const isPortrait = window.innerHeight > window.innerWidth;
-
-    // If on mobile portrait, temporarily force a landscape size for high-quality capture
-    if (isMobile && isPortrait) {
-        mapElement.style.position = 'fixed';
-        mapElement.style.width = '1080px';
-        mapElement.style.height = '600px';
-        mapElement.style.top = '-5000px';
-        mapElement.style.left = '-5000px';
-        mapElement.style.zIndex = '-1000';
-        mapElement.style.visibility = 'hidden';
-        
-        // Trigger resize so Leaflet updates its internal dimensions
-        window.dispatchEvent(new Event('resize'));
-        
-        // Wait for Leaflet to load tiles for the new larger area
-        await new Promise(resolve => setTimeout(resolve, 500));
+    if (!mapElement) {
+        console.error("[CAPTURE] Elemento map-print-container não encontrado");
+        return null;
     }
+
+    // Aguarda um tempo generoso para carregamento dos tiles
+    await new Promise(resolve => setTimeout(resolve, 2000));
 
     try {
-        const canvas = await html2canvas(mapElement, {
-            useCORS: true, 
-            allowTaint: false, 
-            logging: false, 
-            scale: 2, 
-            backgroundColor: null,
-            onclone: (clonedDoc: any) => {
-                const elementsToHide = ['.leaflet-control-container', '.map-custom-controls', '.map-instruction', '.map-search-container'];
-                elementsToHide.forEach(selector => {
-                    const el = clonedDoc.querySelector(selector);
-                    if (el) (el as HTMLElement).style.display = 'none';
-                });
-                const clonedMapContainer = clonedDoc.getElementById('map-print-container');
-                if (clonedMapContainer) { 
-                    clonedMapContainer.style.border = 'none'; 
-                    clonedMapContainer.style.borderRadius = '0'; 
-                    clonedMapContainer.style.visibility = 'visible';
-                    clonedMapContainer.style.position = 'static';
-                    clonedMapContainer.style.top = '0';
-                    clonedMapContainer.style.left = '0';
+        console.log("[CAPTURE] Iniciando captura do mapa...");
+        
+        // Armazena dimensões originais para restaurar depois
+        const originalWidth = mapElement.style.width;
+        const originalHeight = mapElement.style.height;
+        const originalZIndex = mapElement.style.zIndex;
+        const originalPosition = mapElement.style.position;
+        
+        // Força dimensões exatas e garante que o container esteja visível e isolado
+        mapElement.style.width = '1000px';
+        mapElement.style.height = '500px';
+        mapElement.style.position = 'fixed'; // Usar fixed para tirar do fluxo e evitar interferências
+        mapElement.style.top = '0';
+        mapElement.style.left = '0';
+        mapElement.style.zIndex = '9999';
+        
+        // Notifica o Leaflet sobre a mudança de tamanho
+        window.dispatchEvent(new Event('resize'));
+        await new Promise(resolve => setTimeout(resolve, 500));
+
+        // Força o recentralização no ponto exato antes da captura (INSTANTÂNEO)
+        if (mapPickerRef.current) {
+            mapPickerRef.current.recenter(true);
+        }
+        
+        // Aguarda um tempo maior para garantir que os tiles carreguem e o mapa se ajuste
+        await new Promise(resolve => setTimeout(resolve, 3000));
+
+        const container = mapElement.querySelector('.leaflet-container') as HTMLElement || mapElement;
+        
+        // Capturamos o container com dimensões explícitas para evitar faixas cinzas
+        const canvas = await html2canvas(container, {
+            useCORS: true,
+            allowTaint: false,
+            scale: 1.5,
+            backgroundColor: '#ffffff',
+            logging: false,
+            width: 1000,
+            height: 500,
+            imageTimeout: 60000,
+            onclone: (clonedDoc) => {
+                const clonedMap = clonedDoc.querySelector('.leaflet-container') as HTMLElement;
+                if (clonedMap) {
+                    clonedMap.style.width = '1000px';
+                    clonedMap.style.height = '500px';
+                    clonedMap.style.margin = '0';
+                    clonedMap.style.padding = '0';
+                    clonedMap.style.overflow = 'hidden';
+                    
+                    // Esconde TODOS os controles do Leaflet (incluindo atribuição que causa a faixa cinza)
+                    const controls = clonedMap.querySelectorAll('.leaflet-control-container, .leaflet-control, .leaflet-control-attribution');
+                    controls.forEach((el: any) => el.style.display = 'none');
+
+                    // Corrige transformações 3D para o html2canvas
+                    const panes = clonedMap.querySelectorAll('.leaflet-pane, .leaflet-tile-container');
+                    panes.forEach((pane: any) => {
+                        if (pane.style.transform) {
+                            pane.style.transform = pane.style.transform.replace('translate3d', 'translate').replace(/,\s*0px\)$/, ')');
+                        }
+                    });
+
+                    // Garante que as imagens de tiles estejam visíveis
+                    const images = clonedMap.querySelectorAll('img');
+                    images.forEach((img: HTMLImageElement) => {
+                        img.setAttribute('crossOrigin', 'anonymous');
+                        img.style.visibility = 'visible';
+                        img.style.opacity = '1';
+                        img.style.display = 'block';
+                    });
                 }
+
+                // Limpeza de cores modernas (oklch) que o html2canvas não entende
+                const all = clonedDoc.querySelectorAll('*');
+                all.forEach((el: any) => {
+                    try {
+                        const style = window.getComputedStyle(el);
+                        if (style.color.includes('oklch')) el.style.color = '#000000';
+                        if (style.backgroundColor.includes('oklch')) el.style.backgroundColor = 'transparent';
+                    } catch (e) {}
+                });
             }
         });
-        return canvas.toDataURL('image/png');
-    } catch (e) { 
-        console.error("Erro ao capturar mapa:", e);
-        return null; 
-    } finally {
-        // Restore original state
-        if (isMobile && isPortrait) {
-            mapElement.setAttribute('style', originalStyle);
-            window.dispatchEvent(new Event('resize'));
-        }
+
+        const dataUrl = canvas.toDataURL('image/png', 1.0);
+        console.log("[CAPTURE] Captura concluída. Tamanho da string:", dataUrl.length);
+        
+        // Restaura dimensões originais
+        mapElement.style.width = originalWidth;
+        mapElement.style.height = originalHeight;
+        mapElement.style.zIndex = originalZIndex;
+        mapElement.style.position = originalPosition;
+        window.dispatchEvent(new Event('resize'));
+        
+        return dataUrl.length > 3000 ? dataUrl : null;
+    } catch (e) {
+        console.error("[CAPTURE] Erro crítico ao capturar mapa:", e);
+        return null;
     }
   };
+
+  useEffect(() => {
+    return () => {
+      if (previewUrl && previewUrl.startsWith('blob:')) {
+        URL.revokeObjectURL(previewUrl);
+      }
+    };
+  }, [previewUrl]);
 
   const handlePreview = async () => {
     if (!validateLaudoForm()) return;
@@ -1279,10 +1518,21 @@ export function App() {
     setIsLoading(true);
     try {
         const mapImg = await captureMap();
+        if (!mapImg) {
+            console.warn("[PREVIEW] Mapa não capturado.");
+        }
+        
         const url = await generateLaudoPDF(
           { ...formData, id_laudo: idLaudo }, selectedEngineer, 'preview', mapImg || undefined, isSpecificLocation
         );
-        if (url && typeof url === 'string') { setPreviewUrl(url); setShowPreview(true); }
+        if (url && typeof url === 'string') { 
+            // Revoke previous blob URL if it exists and is a blob URL
+            if (previewUrl && previewUrl.startsWith('blob:')) {
+                URL.revokeObjectURL(previewUrl);
+            }
+            setPreviewUrl(url); 
+            setShowPreviewModal(true);
+        }
     } catch (e) {
         console.error("Erro no preview:", e);
     } finally {
@@ -1300,6 +1550,13 @@ export function App() {
     try {
         const mapImg = await captureMap();
         
+        if (!mapImg) {
+            // Se falhar a captura, avisamos o usuário mas permitimos continuar
+            // No ambiente de iframe do AI Studio, capturas de tela complexas podem falhar por segurança (CORS)
+            const msg = "Aviso: Não foi possível capturar a imagem do mapa automaticamente. Para garantir a captura, use a opção 'Abrir em nova aba'.";
+            triggerToast(msg);
+        }
+
         // 1. Gerar blob para upload, download e e-mail
         const pdfBlob = await generateLaudoPDF({ ...formData, id_laudo: idLaudo }, selectedEngineer, 'blob', mapImg || undefined, isSpecificLocation) as Blob;
         
@@ -1349,16 +1606,16 @@ export function App() {
                 } else {
                     const status = directUploadResponse.status;
                     console.error("[UPLOAD] Falha no upload direto. Status:", status);
-                    alert(`Aviso: O laudo foi baixado, mas o upload para a nuvem falhou (Status: ${status}). Verifique se as configurações de CORS no R2 foram aplicadas.`);
+                    triggerToast(`Aviso: O laudo foi baixado, mas o upload para a nuvem falhou (Status: ${status}).`);
                 }
             } else {
                 const errorText = await presignedResponse.text();
                 console.error("[UPLOAD] Falha ao obter Presigned URL:", errorText);
-                alert(`Aviso: O laudo foi baixado, mas não pôde ser salvo na nuvem (Erro ao obter autorização).`);
+                triggerToast(`Aviso: O laudo foi baixado, mas não pôde ser salvo na nuvem.`);
             }
         } catch (uploadErr: any) {
             console.error("[UPLOAD] Erro no processo de upload:", uploadErr);
-            alert(`Aviso: O laudo foi baixado, mas o upload falhou: ${uploadErr.message}`);
+            triggerToast(`Aviso: O laudo foi baixado, mas o upload falhou: ${uploadErr.message}`);
         }
 
         // 4. Preparar conteúdo para E-mail
@@ -1414,7 +1671,7 @@ export function App() {
             
             if (emailResponse.ok) {
                 console.log("[EMAIL] E-mail enviado com sucesso!");
-                alert("Sucesso! Laudo gerado, baixado e enviado por e-mail.");
+                triggerToast("Sucesso! Laudo gerado, baixado e enviado por e-mail.");
             } else {
                 const status = emailResponse.status;
                 const errorText = await emailResponse.text();
@@ -1427,14 +1684,14 @@ export function App() {
                 console.error(`[EMAIL] Erro no servidor (Status: ${status}):`, errorMessage);
                 
                 if (status === 413 || errorMessage.includes('TOO_LARGE')) {
-                    alert("Erro: O arquivo PDF é muito grande para ser enviado por e-mail através do servidor Vercel. O upload na nuvem (R2) deve estar configurado corretamente para arquivos grandes.");
+                    triggerToast("Erro: O arquivo PDF é muito grande para ser enviado por e-mail.");
                 } else {
-                    alert(`Aviso: O laudo foi gerado e baixado, mas o envio do e-mail falhou. Detalhes: ${errorMessage.substring(0, 150)}`);
+                    triggerToast(`Aviso: O laudo foi baixado, mas o envio do e-mail falhou.`);
                 }
             }
         } catch (emailErr) {
             console.error("[EMAIL] Falha ao processar e-mail:", emailErr);
-            alert(`Erro no processamento do E-mail. Verifique sua conexão.`);
+            triggerToast(`Erro no processamento do E-mail.`);
         }
 
         // Registrar Histórico (Apenas se o upload funcionou ou se não era necessário)
@@ -1464,7 +1721,7 @@ export function App() {
              const nextId = (parseInt(idLaudo) + 1).toString();
              setIdLaudo(nextId);
              localStorage.setItem('laudo_seq', nextId);
-             alert("PDF gerado com sucesso! Voltando para a lista.");
+             triggerToast("Laudo gerado e salvo com sucesso!");
              setCurrentView('protocolList');
         }, 1000);
     } catch (e) {
@@ -1622,29 +1879,55 @@ export function App() {
       setShowEngineerModal(true);
   }
 
-  const handleDeleteHistory = async (historyId: string) => {
-      const entry = laudoHistory.find(h => h.id === historyId);
-      if (!entry) return;
+  const handleDeleteHistory = (historyId: string) => {
+      setHistoryToDeleteId(historyId);
+      setProtocolToDelete(null);
+      setDeletePassword('');
+      setDeleteError('');
+      setShowDeleteModal(true);
+  };
 
-      console.log("Executing delete for history:", historyId);
+  const confirmDeleteHistory = async () => {
+      if (!historyToDeleteId) return;
+      if (!deletePassword) { setDeleteError('Digite sua senha para confirmar.'); return; }
       
+      setIsLoading(true);
+      setDeleteError('');
+
       try {
+          // Requirement: Deletion only possible with admin password
+          if (deletePassword !== 'admin') {
+              setDeleteError('Senha de administrador incorreta. Exclusão não permitida.');
+              setIsLoading(false);
+              return;
+          }
+
+          const entry = laudoHistory.find(h => h.id === historyToDeleteId);
+          if (!entry) {
+              setDeleteError("Registro não encontrado.");
+              setIsLoading(false);
+              return;
+          }
+
           // 1. Delete from Storage if URL exists
           if (entry.pdf_url) {
               // Extract filename from public URL
-              // URL format: .../storage/v1/object/public/laudos/filename.pdf
               const urlParts = entry.pdf_url.split('/');
-              const fileName = urlParts[urlParts.length - 1];
+              const fileName = urlParts[urlParts.length - 1].split('?')[0]; // Remove query params if any
               
               if (fileName) {
                   try {
+                      console.log(`[STORAGE] Solicitando exclusão do arquivo: ${fileName}`);
                       const deleteResponse = await fetch(`${window.location.origin}/api/storage`, {
                           method: 'DELETE',
                           headers: { 'Content-Type': 'application/json' },
                           body: JSON.stringify({ fileNames: [fileName] }),
                       });
                       if (!deleteResponse.ok) {
-                          console.warn("Aviso: Erro ao remover arquivo do Storage via API");
+                          const errorData = await deleteResponse.json();
+                          console.warn("Aviso: Erro ao remover arquivo do Storage via API:", errorData);
+                      } else {
+                          console.log(`[STORAGE] Arquivo ${fileName} removido com sucesso.`);
                       }
                   } catch (storageErr) {
                       console.warn("Aviso: Falha na comunicação para remover arquivo do Storage:", storageErr);
@@ -1653,14 +1936,17 @@ export function App() {
           }
 
           // 2. Delete from Database
-          const { error } = await supabase.from('laudo_history').delete().eq('id', historyId);
+          const { error } = await supabase.from('laudo_history').delete().eq('id', historyToDeleteId);
           if (error) throw error;
           
-          setLaudoHistory(prev => prev.filter(h => h.id !== historyId));
-          console.log("History deleted successfully");
+          setLaudoHistory(prev => prev.filter(h => h.id !== historyToDeleteId));
+          closeDeleteModal();
+          console.log("History deleted successfully from database");
       } catch (err: any) {
           console.error("Error deleting history:", err);
-          alert("Erro ao excluir histórico: " + err.message);
+          setDeleteError("Erro ao excluir histórico: " + err.message);
+      } finally {
+          setIsLoading(false);
       }
   };
 
@@ -1697,9 +1983,58 @@ export function App() {
                       <p className="text-gray-500 text-sm">Gerencie os cadastros iniciais antes de emitir os laudos.</p>
                   </div>
               </div>
-              <button onClick={createNewProtocol} className="bg-orange-500 hover:bg-orange-600 text-white px-6 py-3 rounded-lg font-bold uppercase shadow-lg flex items-center gap-2">
-                  <FilePlus size={20} /> Novo Protocolo
-              </button>
+              <div className="flex items-center gap-3 w-full md:w-auto">
+                  <div className="relative">
+                      <button 
+                          onClick={() => setShowColumnToggle(!showColumnToggle)} 
+                          className="bg-white border-2 border-gray-200 hover:border-blue-500 text-gray-600 hover:text-blue-600 px-4 py-3 rounded-lg font-bold uppercase flex items-center gap-2 transition-all"
+                          title="Personalizar Colunas"
+                      >
+                          <Columns size={20} /> <span className="hidden sm:inline">Colunas</span>
+                      </button>
+                      
+                      {showColumnToggle && (
+                          <>
+                              <div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-[55] md:hidden" onClick={() => setShowColumnToggle(false)} />
+                              <div className="absolute left-0 md:left-auto md:right-0 mt-2 w-64 max-w-[calc(100vw-2rem)] bg-white rounded-xl shadow-2xl border border-gray-200 z-[60] p-4 animate-in fade-in slide-in-from-top-2">
+                                  <div className="flex justify-between items-center mb-3 border-b pb-2">
+                                      <h4 className="text-xs font-black text-gray-400 uppercase tracking-widest">Exibir Colunas</h4>
+                                      <button onClick={() => setShowColumnToggle(false)} className="text-gray-400 hover:text-gray-600 p-1 hover:bg-gray-100 rounded-full transition-colors"><X size={16}/></button>
+                                  </div>
+                                  <div className="space-y-1">
+                                      {['Data', 'Protocolo', 'Município', 'Requerente', 'Distribuído Para', 'Status'].map(col => (
+                                          <label key={col} className="flex items-center gap-3 p-2.5 hover:bg-blue-50 rounded-lg cursor-pointer transition-colors group">
+                                              <div className="relative flex items-center">
+                                                  <input 
+                                                      type="checkbox" 
+                                                      className="peer w-5 h-5 rounded border-2 border-gray-300 text-blue-600 focus:ring-blue-500 transition-all"
+                                                      checked={visibleColumns.includes(col)}
+                                                      onChange={(e) => {
+                                                          if (e.target.checked) {
+                                                              setVisibleColumns([...visibleColumns, col]);
+                                                          } else {
+                                                              if (visibleColumns.length > 1) {
+                                                                  setVisibleColumns(visibleColumns.filter(c => c !== col));
+                                                              }
+                                                          }
+                                                      }}
+                                                  />
+                                              </div>
+                                              <span className="text-sm font-bold text-gray-700 group-hover:text-blue-700 transition-colors">{col}</span>
+                                          </label>
+                                      ))}
+                                  </div>
+                                  <div className="mt-3 pt-2 border-t border-gray-100">
+                                      <p className="text-[10px] text-gray-400 font-medium text-center italic">Suas preferências são salvas automaticamente.</p>
+                                  </div>
+                              </div>
+                          </>
+                      )}
+                  </div>
+                  <button onClick={createNewProtocol} className="flex-1 md:flex-none bg-orange-500 hover:bg-orange-600 text-white px-6 py-3 rounded-lg font-bold uppercase shadow-lg flex items-center justify-center gap-2 transition-all">
+                      <FilePlus size={20} /> Novo Protocolo
+                  </button>
+              </div>
           </div>
 
           {/* Filters Section */}
@@ -1759,16 +2094,16 @@ export function App() {
                       <p className="text-sm">Tente ajustar os filtros ou clique em "Novo Protocolo".</p>
                   </div>
               ) : (
-                  <div className="overflow-x-auto">
-                      <table className="w-full text-left border-collapse">
+                  <div className="overflow-x-auto scrollbar-thin scrollbar-thumb-gray-300">
+                      <table className="w-auto text-left border-collapse">
                           <thead>
                               <tr className="bg-gray-100 border-b border-gray-200 text-gray-600 text-sm uppercase">
-                                  <th className="p-4 font-bold">Data</th>
-                                  <th className="p-4 font-bold">Protocolo</th>
-                                  <th className="p-4 font-bold">Município</th>
-                                  <th className="p-4 font-bold">Requerente</th>
-                                  <th className="p-4 font-bold">Distribuído Para</th>
-                                  <th className="p-4 font-bold text-center">Status</th>
+                                  {visibleColumns.includes('Data') && <th className="p-4 font-bold whitespace-nowrap">Data</th>}
+                                  {visibleColumns.includes('Protocolo') && <th className="p-4 font-bold whitespace-nowrap">Protocolo</th>}
+                                  {visibleColumns.includes('Município') && <th className="p-4 font-bold whitespace-nowrap">Município</th>}
+                                  {visibleColumns.includes('Requerente') && <th className="p-4 font-bold whitespace-nowrap">Requerente</th>}
+                                  {visibleColumns.includes('Distribuído Para') && <th className="p-4 font-bold whitespace-nowrap">Distribuído Para</th>}
+                                  {visibleColumns.includes('Status') && <th className="p-4 font-bold text-center whitespace-nowrap">Status</th>}
                                   <th className="p-4 font-bold text-center">Ações</th>
                               </tr>
                           </thead>
@@ -1779,26 +2114,46 @@ export function App() {
                                   
                                   return (
                                   <tr key={p.id} className="hover:bg-blue-50 transition-colors group">
-                                      <td className="p-4 text-sm font-medium">{(p.data || '').split('-').reverse().join('/')}</td>
-                                      <td className="p-4 text-sm font-bold text-blue-900">{p.numeroProtocolo}</td>
-                                      <td className="p-4 text-sm">{p.municipio}</td>
-                                      <td className="p-4 text-sm">{p.requerente}</td>
-                                      <td className="p-4 text-sm">
-                                          {p.distributedToId ? (engineers.find(e => e.id === p.distributedToId)?.name || 'N/A') : <span className="text-gray-400 italic">Pendente</span>}
-                                      </td>
-                                      <td className="p-4 text-center">
-                                          {hasHistory ? (
-                                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 border border-green-200">
-                                                  Emitido
-                                              </span>
-                                          ) : (
-                                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600 border border-gray-200">
-                                                  Pendente
-                                              </span>
-                                          )}
-                                      </td>
+                                      {visibleColumns.includes('Data') && (
+                                          <td className="p-4 text-sm font-medium whitespace-nowrap">
+                                              {(p.data || '').split('-').reverse().join('/')}
+                                          </td>
+                                      )}
+                                      {visibleColumns.includes('Protocolo') && (
+                                          <td className="p-4 text-sm font-bold text-blue-900 whitespace-nowrap">
+                                              {p.numeroProtocolo}
+                                          </td>
+                                      )}
+                                      {visibleColumns.includes('Município') && (
+                                          <td className="p-4 text-sm whitespace-nowrap">
+                                              {p.municipio}
+                                          </td>
+                                      )}
+                                      {visibleColumns.includes('Requerente') && (
+                                          <td className="p-4 text-sm whitespace-nowrap">
+                                              {p.requerente}
+                                          </td>
+                                      )}
+                                      {visibleColumns.includes('Distribuído Para') && (
+                                          <td className="p-4 text-sm whitespace-nowrap">
+                                              {p.distributedToId ? (engineers.find(e => e.id === p.distributedToId)?.name || 'N/A') : <span className="text-gray-400 italic">Pendente</span>}
+                                          </td>
+                                      )}
+                                      {visibleColumns.includes('Status') && (
+                                          <td className="p-4 text-center whitespace-nowrap">
+                                              {hasHistory ? (
+                                                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 border border-green-200">
+                                                      Emitido
+                                                  </span>
+                                              ) : (
+                                                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600 border border-gray-200">
+                                                      Pendente
+                                                  </span>
+                                              )}
+                                          </td>
+                                      )}
                                       <td className="p-4">
-                                          <div className="flex items-center justify-center gap-2 relative">
+                                          <div className="flex items-center justify-center gap-2 relative min-w-[120px]">
                                               {/* Edit / View Button */}
                                               <button 
                                                   type="button" 
@@ -1813,8 +2168,16 @@ export function App() {
                                                   protocol={p}
                                                   history={history}
                                                   isUserAdmin={isUserAdmin}
+                                                  currentEngineerId={loginEngineerId}
                                                   onStartLaudo={startLaudoFromProtocol}
                                                   onDeleteHistory={handleDeleteHistory}
+                                                  onPreviewHistory={(url) => { 
+                                                      if (previewUrl && previewUrl.startsWith('blob:')) {
+                                                          URL.revokeObjectURL(previewUrl);
+                                                      }
+                                                      setPreviewUrl(url); 
+                                                      setShowPreviewModal(true); 
+                                                   }}
                                               />
 
                                               <button type="button" onClick={() => handleDeleteProtocol(p.id)} className="p-2 text-red-600 hover:bg-red-100 rounded" title="Excluir"><Trash2 size={16}/></button>
@@ -2208,7 +2571,10 @@ export function App() {
                 </div>
             )}
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-3 gap-3 border-b border-blue-200 pb-2">
-                <label className="block text-sm font-bold text-blue-900 uppercase">Localização Geográfica (Selecione no Mapa)</label>
+                <div className="flex flex-col">
+                    <label className="block text-sm font-bold text-blue-900 uppercase">Localização Geográfica (Selecione no Mapa)</label>
+                    <p className="text-[10px] text-blue-600 font-medium">Dica: Se o mapa não sair no PDF, use o botão "Abrir em nova aba" do AI Studio.</p>
+                </div>
                 {!isReadOnly && (
                 <div className="flex items-center gap-2 w-full sm:w-auto">
                         {downloadState.error ? (
@@ -2245,7 +2611,7 @@ export function App() {
                 )}
             </div>
 
-            <div className={isReadOnly ? "pointer-events-none grayscale-[0.3]" : ""}>
+            <div id="map-print-container" className={isReadOnly ? "pointer-events-none grayscale-[0.3]" : ""}>
             <MapPicker 
                 ref={mapPickerRef}
                 key={isProtocol ? protocolForm.id : idLaudo}
@@ -2473,7 +2839,11 @@ export function App() {
                                             const newFinalidade = e.target.checked 
                                                 ? [...formData.finalidade, option]
                                                 : formData.finalidade.filter(f => f !== option);
-                                            setFormData({...formData, finalidade: newFinalidade});
+                                            
+                                            const isComercial = newFinalidade.includes('Comercial');
+                                            const newParecer = isComercial ? PARECER_COMERCIAL : (PARECER_TEXTS[formData.classificacao] || '');
+                                            
+                                            setFormData({...formData, finalidade: newFinalidade, parecerFinal: newParecer});
                                         }}
                                     />
                                     <Check className="absolute h-3.5 w-3.5 text-white opacity-0 peer-checked:opacity-100 transition-opacity pointer-events-none" strokeWidth={4} />
@@ -2626,7 +2996,7 @@ export function App() {
   };
 
   // MAIN RENDER
-  if (!isAuthenticated && currentView === 'login') {
+  const renderLoginView = () => {
     // Filter engineers for search
     const filteredEngineers = engineers.filter(e => 
         e.active && ( // Only show active engineers
@@ -2641,16 +3011,16 @@ export function App() {
     return (
         <div className="min-h-screen bg-gradient-to-br from-blue-900 to-slate-900 flex items-center justify-center p-4">
             <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
-                <div className="bg-blue-50 p-6 text-center border-b border-blue-100 relative">
-                    <div className="flex justify-center gap-8 mb-6">
-                       <img src={BRASAO_PR_LOGO} className="h-24 md:h-32 object-contain" alt="Brasão PR" />
-                       <img src={DEFESA_CIVIL_PR_LOGO} className="h-24 md:h-32 object-contain" alt="Defesa Civil" />
+                <div className="bg-blue-50 p-4 text-center border-b border-blue-100 relative">
+                    <div className="flex justify-center gap-4 mb-4">
+                       <img src={BRASAO_PR_LOGO} className="h-20 md:h-24 object-contain" alt="Brasão PR" />
+                       <img src={DEFESA_CIVIL_PR_LOGO} className="h-20 md:h-24 object-contain" alt="Defesa Civil" />
                     </div>
                     <h1 className="text-xl font-black text-blue-900 uppercase tracking-tight">Sistema de Laudos Técnicos</h1>
-                    <p className="text-blue-600 text-xs font-bold uppercase tracking-widest mt-1">COORDENADORIA ESTADUAL DA DEFESA CIVIL</p>
+                    <p className="text-blue-600 text-[10px] font-bold uppercase tracking-widest mt-1">COORDENADORIA ESTADUAL DA DEFESA CIVIL</p>
                 </div>
                 
-                <form onSubmit={handleLogin} className="p-8 space-y-5 pb-6">
+                <form onSubmit={handleLogin} className="p-6 space-y-4 pb-6">
                     {loginError && (
                         <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm font-bold flex items-center gap-2 border border-red-100 animate-in shake">
                             <AlertTriangle size={16} /> {loginError}
@@ -2769,7 +3139,7 @@ export function App() {
                         {isLoading ? <Loader2 size={20} className="animate-spin" /> : <><LogIn size={20} /> Acessar Sistema</>}
                     </button>
 
-                    <div className="pt-4 border-t border-gray-100 text-center">
+                    <div className="pt-4 border-t border-gray-100 flex flex-col gap-2">
                         <button 
                             type="button"
                             onClick={() => {
@@ -2809,10 +3179,12 @@ export function App() {
             </div>
         </div>
     );
-  }
+  };
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-12 font-sans text-slate-800">
+    <>
+      {(!isAuthenticated && currentView === 'login') ? renderLoginView() : (
+          <div className="min-h-screen bg-gray-50 pb-12 font-sans text-slate-800">
       <header className="bg-blue-900 text-white shadow-lg sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-24 flex items-center justify-between">
           <div className="flex items-center gap-6 overflow-hidden">
@@ -2858,6 +3230,8 @@ export function App() {
           {currentView === 'protocolForm' && renderProtocolFormView()}
           {currentView === 'laudoForm' && renderLaudoFormView()}
       </main>
+        </div>
+      )}
 
       {/* SHARED MODALS */}
       {showToast && (
@@ -2900,6 +3274,37 @@ export function App() {
         </div>
       )}
 
+      {showPreviewModal && previewUrl && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-0 sm:p-4 animate-in fade-in">
+            <div className="bg-white rounded-none sm:rounded-xl shadow-2xl w-full h-full sm:h-[95vh] max-w-5xl overflow-hidden flex flex-col">
+                <div className="bg-blue-900 p-4 flex justify-between items-center text-white shrink-0">
+                    <h3 className="font-bold text-lg uppercase flex items-center gap-2"><Eye size={20}/> Visualização do Laudo</h3>
+                    <div className="flex items-center gap-2">
+                        <a 
+                            href={previewUrl} 
+                            download="laudo.pdf"
+                            className="bg-blue-800 hover:bg-blue-700 px-3 py-1 rounded text-xs font-bold uppercase flex items-center gap-1 transition-colors"
+                        >
+                            <Download size={14} /> <span className="hidden sm:inline">Baixar</span>
+                        </a>
+                        <button onClick={() => setShowPreviewModal(false)} className="hover:bg-white/20 p-1 rounded-full transition-colors"><X size={24}/></button>
+                    </div>
+                </div>
+                <div className="flex-1 bg-gray-100 relative overflow-hidden">
+                    <PDFViewer url={previewUrl} />
+                </div>
+                <div className="p-4 bg-gray-50 border-t border-gray-200 flex justify-center shrink-0">
+                    <button 
+                        onClick={() => setShowPreviewModal(false)} 
+                        className="px-8 py-2 bg-blue-900 text-white font-bold uppercase rounded-lg hover:bg-blue-800 shadow-lg transition-all"
+                    >
+                        Fechar Visualização
+                    </button>
+                </div>
+            </div>
+        </div>
+      )}
+
       {showDeleteModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in zoom-in-95">
              <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden border-2 border-red-500">
@@ -2908,36 +3313,27 @@ export function App() {
                          <Trash2 className="text-red-600" size={32} />
                      </div>
                      <h3 className="text-xl font-bold text-red-900 uppercase">Confirmar Exclusão</h3>
-                     <p className="text-sm text-red-700 mt-2">Esta ação é irreversível. O protocolo será apagado permanentemente.</p>
+                     <p className="text-sm text-red-700 mt-2">
+                         {protocolToDelete 
+                            ? "Esta ação é irreversível. O protocolo e todo o seu histórico serão apagados permanentemente." 
+                            : "Esta ação é irreversível. Este registro do histórico será apagado permanentemente."}
+                     </p>
                  </div>
                  <div className="p-6 bg-white space-y-4">
                      {deleteError && <div className="bg-red-50 text-red-600 text-xs font-bold p-2 rounded border border-red-100 text-center">{deleteError}</div>}
                      <div>
-                         <label className="block text-xs font-bold text-gray-500 uppercase mb-1 text-center">Digite sua senha para confirmar</label>
+                         <label className="block text-xs font-bold text-gray-500 uppercase mb-1 text-center">Digite a senha de administrador para confirmar</label>
                          <input type="password" className="w-full text-center text-lg tracking-widest border-2 border-gray-200 rounded-lg py-2 bg-white text-black focus:border-red-500 focus:ring-0 transition-colors" value={deletePassword} onChange={(e) => setDeletePassword(e.target.value)} autoFocus />
-                     </div>
-                     <div className="flex gap-3 pt-2">
-                         <button onClick={() => setShowDeleteModal(false)} className="flex-1 py-3 text-gray-500 font-bold uppercase hover:bg-gray-100 rounded-lg">Cancelar</button>
-                         <button onClick={confirmDeleteProtocol} disabled={isLoading} className="flex-1 py-3 bg-red-600 text-white font-bold uppercase rounded-lg hover:bg-red-700 shadow-lg">{isLoading ? 'Apagando...' : 'Excluir Agora'}</button>
+                      </div>
+                      <div className="flex gap-3 pt-2">
+                         <button onClick={closeDeleteModal} className="flex-1 py-3 text-gray-500 font-bold uppercase hover:bg-gray-100 rounded-lg">Cancelar</button>
+                         <button onClick={protocolToDelete ? confirmDeleteProtocol : confirmDeleteHistory} disabled={isLoading} className="flex-1 py-3 bg-red-600 text-white font-bold uppercase rounded-lg hover:bg-red-700 shadow-lg">{isLoading ? 'Apagando...' : 'Excluir Agora'}</button>
                      </div>
                  </div>
              </div>
         </div>
       )}
 
-      {showPreview && previewUrl && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-             <div className="bg-white rounded-xl w-full max-w-4xl h-[90vh] flex flex-col overflow-hidden">
-                 <div className="bg-gray-900 text-white p-4 flex justify-between items-center shrink-0">
-                     <h3 className="font-bold flex items-center gap-2"><Eye className="text-blue-400"/> Visualização do Laudo</h3>
-                     <button onClick={() => setShowPreview(false)} className="hover:bg-white/10 p-2 rounded-full"><X/></button>
-                 </div>
-                 <div className="flex-1 bg-gray-200 p-4 overflow-hidden">
-                     <iframe src={previewUrl} className="w-full h-full rounded shadow-lg bg-white" title="PDF Preview"></iframe>
-                 </div>
-             </div>
-        </div>
-      )}
-    </div>
+    </>
   );
 }

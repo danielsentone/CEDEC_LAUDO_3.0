@@ -143,7 +143,7 @@ export const generateLaudoPDF = async (
   doc.setFontSize(14);
   doc.setFont('helvetica', 'bold');
   doc.text('LAUDO DE IMÓVEL AFETADO POR EVENTO CLIMÁTICO', pageWidth / 2, yPos, { align: 'center' });
-  yPos += 15;
+  yPos += 10; // Reduzido de 15 para 10 para economizar espaço
 
   // --- SEÇÃO 1 ---
   doc.setFontSize(11);
@@ -161,7 +161,7 @@ export const generateLaudoPDF = async (
   printKeyValue('DATA DA VISTORIA:', dateValue, margin + 100, yPos, contentWidth - 100);
   yPos += LINE_HEIGHT + 2; 
   const hProto = printKeyValue('PROTOCOLO:', formatValue(data.protocolo), margin, yPos, contentWidth);
-  yPos += hProto + 6;
+  yPos += hProto + 5; // Reduzido de 6 para 5
 
   // --- SEÇÃO 2 ---
   doc.setFontSize(11);
@@ -173,7 +173,7 @@ export const generateLaudoPDF = async (
 
   const addFieldStack = (label: string, value: string) => {
     const height = printKeyValue(label, value, margin, yPos, contentWidth);
-    yPos += height + 1.5;
+    yPos += height + 1.2; // Reduzido de 1.5 para 1.2
     return height;
   };
 
@@ -202,38 +202,75 @@ export const generateLaudoPDF = async (
   addFieldStack('TIPOLOGIA:', formatValue(data.tipologia === BuildingTypology.OUTRO ? data.tipologiaOutro : data.tipologia));
   addFieldStack('FINALIDADE:', formatValue(data.finalidade.join(' / ')));
 
-  yPos += 2; 
+  yPos += 1; // Reduzido de 2 para 1
 
-  if (mapImage) {
+  if (mapImage && typeof mapImage === 'string' && mapImage.startsWith('data:image')) {
       try {
-          const props = doc.getImageProperties(mapImage);
-          const mapRatio = props.width / props.height;
+          console.log("[PDF] Inserindo imagem do mapa no PDF. Tamanho:", mapImage.length);
+          const targetWidth = contentWidth;
+          const targetHeight = 80; // Ajustado para 80mm para garantir que caiba na pág 1
           
-          const availableHeight = (pageHeight - bottomMargin) - yPos - 10;
-          let targetWidth = contentWidth;
-          let targetHeight = targetWidth / mapRatio;
-
-          if (targetHeight > availableHeight) {
-              targetHeight = availableHeight;
-              targetWidth = targetHeight * mapRatio;
+          // Tenta manter na página 1. Se realmente não couber, move para a próxima.
+          if (yPos + targetHeight + 5 > pageHeight - bottomMargin) {
+              doc.addPage();
+              yPos = drawHeader(doc, pageWidth, margin, data.logoEsquerda, data.logoDireita);
           }
 
-          const mapX = margin + (contentWidth - targetWidth) / 2;
+          const mapY = yPos + 2; 
+          const mapX = margin;
+
+          doc.addImage(mapImage, 'PNG', mapX, mapY, targetWidth, targetHeight, undefined, 'FAST');
           
-          yPos += 5;
-          doc.addImage(mapImage, 'PNG', mapX, yPos, targetWidth, targetHeight);
+          // Desenhar o PIN (Gota) 5mm acima do centro (Conforme solicitação)
+          const centerX = mapX + (targetWidth / 2);
+          const centerY = mapY + (targetHeight / 2) - 5; 
+          const pinWidth = 6;
+          const pinHeight = 9;
           
-          // Moldura
+          // Sombra do pin
+          doc.setFillColor(0, 0, 0, 0.15);
+          doc.ellipse(centerX, centerY, 1.2, 0.4, 'F');
+
+          doc.setDrawColor(255, 255, 255); // Borda branca
+          doc.setLineWidth(0.4);
+          doc.setFillColor(255, 0, 0); // Vermelho puro
+          
+          // Parte superior (círculo)
+          const circleCenterY = centerY - 6;
+          doc.circle(centerX, circleCenterY, 3, 'FD');
+          
+          // Parte inferior (triângulo/ponta para formar a gota)
+          doc.triangle(
+            centerX - 3, circleCenterY,
+            centerX + 3, circleCenterY,
+            centerX, centerY,
+            'FD'
+          );
+          
+          // Detalhe interno (furinho branco)
+          doc.setFillColor(255, 255, 255);
+          doc.circle(centerX, circleCenterY, 1.2, 'F');
+          
           doc.setDrawColor(0);
-          doc.setLineWidth(0.5); 
-          doc.rect(mapX, yPos, targetWidth, targetHeight, 'S');
+          doc.setLineWidth(0.4); 
+          doc.rect(mapX, mapY, targetWidth, targetHeight, 'S');
           
-          yPos += targetHeight + 5;
-      } catch(e) { console.error("Erro ao inserir mapa no PDF", e); }
+          doc.setFontSize(8);
+          doc.setFont('helvetica', 'italic');
+          doc.text('Localização aproximada do imóvel', mapX, mapY + targetHeight + 4);
+          
+          yPos = mapY + targetHeight + 10;
+      } catch(e) { 
+          console.error("[PDF] Erro ao inserir mapa no PDF", e); 
+      }
   }
 
-  doc.addPage();
-  yPos = drawHeader(doc, pageWidth, margin, data.logoEsquerda, data.logoDireita);
+  // Só adiciona nova página se o conteúdo seguinte (Seção 3) não couber ou se quisermos forçar a quebra
+  // Para garantir que o mapa não fique "sozinho", verificamos se há espaço para pelo menos o título da Seção 3
+  if (yPos + 20 > pageHeight - bottomMargin) {
+      doc.addPage();
+      yPos = drawHeader(doc, pageWidth, margin, data.logoEsquerda, data.logoDireita);
+  }
   
   // --- SEÇÃO 3 ---
   doc.setFontSize(11);

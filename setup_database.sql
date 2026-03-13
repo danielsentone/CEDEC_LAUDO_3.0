@@ -42,6 +42,7 @@ CREATE TABLE IF NOT EXISTS laudo_history (
     protocol_id UUID REFERENCES protocols(id),
     engineer_id UUID REFERENCES engineers(id),
     engineer_name TEXT,
+    pdf_url TEXT,
     created_at TIMESTAMPTZ DEFAULT now()
 );
 

@@ -8,6 +8,15 @@ import { City } from '../types';
 import { Locate, Loader2, Search, MapPin, X, List } from 'lucide-react';
 
 // Fix Leaflet marker icons in React safely
+const redIcon = new L.Icon({
+    iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
+    shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
+    iconSize: [25, 41],
+    iconAnchor: [12, 41],
+    popupAnchor: [1, -34],
+    shadowSize: [41, 41]
+});
+
 try {
     // @ts-ignore
     delete L.Icon.Default.prototype._getIconUrl;
@@ -33,6 +42,7 @@ export interface MapPickerHandle {
     triggerOfflineDownload: () => void;
     cancelOfflineDownload: () => void;
     searchAndCenter: (address: string) => Promise<void>;
+    recenter: (instant?: boolean) => void;
 }
 
 interface MapPickerProps {
@@ -62,6 +72,7 @@ const MapController = ({
   zoom,
   ignoreRecenter, 
   shouldFlyToTarget,
+  isInstantRecenter,
   locateTrigger 
 }: { 
   lat: number; 
@@ -69,6 +80,7 @@ const MapController = ({
   zoom: number,
   ignoreRecenter: React.MutableRefObject<boolean>;
   shouldFlyToTarget: React.MutableRefObject<boolean>;
+  isInstantRecenter: React.MutableRefObject<boolean>;
   locateTrigger: number;
 }) => {
   const map = useMap();
@@ -89,8 +101,15 @@ const MapController = ({
             // Se foi um trigger de busca (shouldFlyToTarget), usa zoom alto (18). 
             // Se foi apenas uma carga de dados (ex: abrir protocolo), usa o zoom salvo.
             const targetZoom = shouldFlyToTarget.current ? 18 : zoom;
+            const isInstant = isInstantRecenter.current;
             
-            map.setView([lat, lng], targetZoom, { animate: true, duration: 1.5 });
+            if (isInstant) {
+                map.invalidateSize();
+                map.setView([lat, lng], targetZoom, { animate: false });
+                isInstantRecenter.current = false;
+            } else {
+                map.setView([lat, lng], targetZoom, { animate: true, duration: 1.5 });
+            }
             shouldFlyToTarget.current = false; 
         } else if (zoomChanged) {
             // Se mudou só o zoom (ex: scroll do mouse), não reseta o centro!
@@ -503,6 +522,7 @@ export const MapPicker = forwardRef<MapPickerHandle, MapPickerProps>(({
 
   const ignoreRecenter = useRef(false);
   const shouldFlyToTarget = useRef(false);
+  const isInstantRecenter = useRef(false);
   const skipSearchRef = useRef(false);
 
   useEffect(() => {
@@ -639,6 +659,11 @@ export const MapPicker = forwardRef<MapPickerHandle, MapPickerProps>(({
         if (cancelDownloadRef.current) {
             cancelDownloadRef.current();
         }
+    },
+    recenter: (instant = false) => {
+        shouldFlyToTarget.current = true;
+        isInstantRecenter.current = instant;
+        setLocateTrigger(prev => prev + 1);
     },
     searchAndCenter: async (address: string) => {
         setIsSearching(true);
@@ -855,6 +880,7 @@ export const MapPicker = forwardRef<MapPickerHandle, MapPickerProps>(({
         style={{ height: '100%', width: '100%' }} 
         zoomSnap={0.5} 
         zoomDelta={0.5}
+        preferCanvas={false}
       >
         {layer === 'osm' && (
           <TileLayerAny attribution='&copy; OpenStreetMap' url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" crossOrigin="anonymous" />
@@ -872,6 +898,7 @@ export const MapPicker = forwardRef<MapPickerHandle, MapPickerProps>(({
             zoom={initialZoom} 
             ignoreRecenter={ignoreRecenter} 
             shouldFlyToTarget={shouldFlyToTarget}
+            isInstantRecenter={isInstantRecenter}
             locateTrigger={locateTrigger}
         />
         <MapInvalidator />
@@ -879,7 +906,7 @@ export const MapPicker = forwardRef<MapPickerHandle, MapPickerProps>(({
         {/* Lógica de Download Offline (sem UI) */}
         <OfflineDownloader layerType={layer} triggerRef={downloadTriggerRef} cancelRef={cancelDownloadRef} onStateChange={onDownloadStateChange} />
         
-        {showMarker && <MarkerAny position={[centerLat, centerLng]} />}
+        {showMarker && <MarkerAny position={[centerLat, centerLng]} icon={redIcon} />}
         <MapEventsHandler onSelect={onMapSelect} onZoom={onMapZoom} />
       </MapContainerAny>
       

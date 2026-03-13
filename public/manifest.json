@@ -1,0 +1,17 @@
+{
+  "name": "Defesa Civil PR - Laudos",
+  "short_name": "DC PR Laudos",
+  "description": "Sistema de Laudos Técnicos da Defesa Civil do Paraná",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0f172a",
+  "theme_color": "#0f172a",
+  "icons": [
+    {
+      "src": "https://i.postimg.cc/cLBwfwdK/LOGO_DC.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

@@ -286,12 +286,19 @@ async function startServer() {
 
   if (!isVercel && (!isProduction || !distExists)) {
     console.log(`[SYSTEM] Usando middleware Vite (Produção: ${isProduction}, Dist existe: ${distExists})`);
-    const { createServer: createViteServer } = await import("vite");
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: "spa",
-    });
-    app.use(vite.middlewares);
+    try {
+      const { createServer: createViteServer } = await import("vite");
+      const vite = await createViteServer({
+        server: { middlewareMode: true },
+        appType: "spa",
+      });
+      app.use(vite.middlewares);
+    } catch (viteErr) {
+      console.error("[SYSTEM] Erro ao carregar Vite middleware:", viteErr);
+      app.get("*", (req, res) => {
+        res.status(500).send("Erro do Servidor: Falha ao carregar o ambiente de desenvolvimento (Vite).");
+      });
+    }
   } else if (distExists) {
     console.log("[SYSTEM] Servindo arquivos estáticos da pasta 'dist'");
     app.use(express.static("dist"));

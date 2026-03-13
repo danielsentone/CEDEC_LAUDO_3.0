@@ -19,6 +19,17 @@ export default defineConfig(({ mode }) => {
         },
       },
       plugins: [react(), tailwindcss()],
+      build: {
+        target: 'esnext'
+      },
+      esbuild: {
+        target: 'esnext'
+      },
+      optimizeDeps: {
+        esbuildOptions: {
+          target: 'esnext'
+        }
+      },
       define: {
         'process.env.API_KEY': JSON.stringify(env.GEMINI_API_KEY),
         'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY)

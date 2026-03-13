@@ -5,6 +5,7 @@ create table if not exists laudo_history (
   protocol_id text references protocols(id) on delete cascade,
   engineer_id text,
   engineer_name text,
+  pdf_url text,
   created_at timestamp with time zone default now()
 );
 

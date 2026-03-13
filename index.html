@@ -2,30 +2,29 @@
 <html lang="pt-BR">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="theme-color" content="#0f172a" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="DC PR Laudos" />
+    <link rel="apple-touch-icon" href="https://i.postimg.cc/cLBwfwdK/LOGO_DC.png" />
+    <link rel="manifest" href="/manifest.json" />
     <title>Defesa Civil PR - Laudos</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" referrerPolicy="no-referrer" />
     <script>
-      // Kill all service workers and clear caches to prevent caching issues
+      // Register Service Worker for PWA
       if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.getRegistrations().then(function(registrations) {
-          for(let registration of registrations) {
-            registration.unregister();
-            console.log('[SYSTEM] Service Worker unregistered');
-          }
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js')
+            .then(registration => {
+              console.log('[SYSTEM] Service Worker registered with scope:', registration.scope);
+            })
+            .catch(error => {
+              console.error('[SYSTEM] Service Worker registration failed:', error);
+            });
         });
       }
       
-      // Clear all caches
-      if ('caches' in window) {
-        caches.keys().then(function(names) {
-          for (let name of names) {
-            caches.delete(name);
-            console.log('[SYSTEM] Cache deleted:', name);
-          }
-        });
-      }
-
       // Global function to hide loader
       window.hideLoader = function() {
         const loader = document.getElementById('loading-screen');
